@@ -9,6 +9,7 @@ namespace GestionCourrier.Models
         public string NomComplet { get; set; } = string.Empty;
         public string Login { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
+        public string Role { get; set; } = "Employe";
 
         public int IdService { get; set; }
         public Service? Service { get; set; }

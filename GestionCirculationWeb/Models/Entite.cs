@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace GestionCourrier.Models
@@ -31,11 +30,11 @@ namespace GestionCourrier.Models
         public int? ParentId { get; set; }
         public string TypeRegistre { get; set; } = "Waridat";
         public string? TypeCorrespondance { get; set; }
-
+        public bool EstTransmissible { get; set; } = false;
+        public string? EtatWorkflow { get; set; } // stocke la valeur de DocumentState
         // Navigation
         public int IdService { get; set; }
         public Service? Service { get; set; }
-        public ICollection<Circulation> Circulations { get; set; } = new List<Circulation>();
 
         public void CreerEntite() { }
         public void ModifierEntite() { }

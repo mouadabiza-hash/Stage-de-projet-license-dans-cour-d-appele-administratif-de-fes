@@ -46,7 +46,7 @@ namespace GestionCourrier.Controllers
                 Login = user.Login,
                 NomComplet = user.NomComplet,
                 IdService = user.IdService,
-                NomService = user.Service.NomService
+                NomService = user.Service?.NomService ?? string.Empty
             });
         }
 
@@ -73,7 +73,7 @@ namespace GestionCourrier.Controllers
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Name, user.Login),
                 new Claim("IdService", user.IdService.ToString()),
-                new Claim("NomService", user.Service.NomService)
+                new Claim("NomService", user.Service?.NomService ?? string.Empty)
             };
 
             var token = new JwtSecurityToken(

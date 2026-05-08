@@ -22,38 +22,6 @@ namespace GestionCirculationWeb.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("GestionCourrier.Models.Circulation", b =>
-                {
-                    b.Property<int>("IdCirculation")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdCirculation"));
-
-                    b.Property<DateTime>("DateDeReception")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DateEnvoi")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("EmetteurService")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("EntiteId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Recepteur")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("IdCirculation");
-
-                    b.HasIndex("EntiteId");
-
-                    b.ToTable("Circulations");
-                });
-
             modelBuilder.Entity("GestionCourrier.Models.Entite", b =>
                 {
                     b.Property<int>("IdEntite")
@@ -80,8 +48,14 @@ namespace GestionCirculationWeb.Migrations
                     b.Property<bool>("EstArchive")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("EstTransmissible")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Etat")
                         .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EtatWorkflow")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("IdBureauOrdre")
@@ -157,15 +131,24 @@ namespace GestionCirculationWeb.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("EntiteAdministratifId")
+                        .HasColumnType("int");
+
                     b.Property<bool>("EstArchive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("EstTransmissible")
                         .HasColumnType("bit");
 
                     b.Property<string>("EtatArchive")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int?>("IdBureauOrdre")
-                        .HasColumnType("int");
+                    b.Property<string>("EtatWorkflow")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("IdBureauOrdre")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("IdService")
                         .HasColumnType("int");
@@ -186,6 +169,8 @@ namespace GestionCirculationWeb.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EntiteAdministratifId");
 
                     b.HasIndex("IdService");
 
@@ -333,7 +318,7 @@ namespace GestionCirculationWeb.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<DateTime>("DateDeRetour")
+                    b.Property<DateTime?>("DateDeRetour")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime>("DateDeRetrait")
@@ -382,6 +367,61 @@ namespace GestionCirculationWeb.Migrations
                     b.ToTable("Services");
                 });
 
+            modelBuilder.Entity("GestionCourrier.Models.Transaction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("DateEnvoi")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DateReponse")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DestinationServiceId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DestinationUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("DoitRevenir")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("MessageReponse")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SourceServiceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Statut")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DestinationServiceId");
+
+                    b.HasIndex("DestinationUserId");
+
+                    b.HasIndex("SourceServiceId");
+
+                    b.ToTable("Transactions");
+                });
+
             modelBuilder.Entity("GestionCourrier.Models.Utilisateur", b =>
                 {
                     b.Property<int>("Id")
@@ -405,22 +445,15 @@ namespace GestionCirculationWeb.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("IdService");
 
                     b.ToTable("Utilisateurs");
-                });
-
-            modelBuilder.Entity("GestionCourrier.Models.Circulation", b =>
-                {
-                    b.HasOne("GestionCourrier.Models.Entite", "Entite")
-                        .WithMany("Circulations")
-                        .HasForeignKey("EntiteId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Entite");
                 });
 
             modelBuilder.Entity("GestionCourrier.Models.Entite", b =>
@@ -436,11 +469,17 @@ namespace GestionCirculationWeb.Migrations
 
             modelBuilder.Entity("GestionCourrier.Models.EntiteDJ", b =>
                 {
+                    b.HasOne("GestionCourrier.Models.Entite", "EntiteAdministratif")
+                        .WithMany()
+                        .HasForeignKey("EntiteAdministratifId");
+
                     b.HasOne("GestionCourrier.Models.Service", "Service")
                         .WithMany("EntitesDJ")
                         .HasForeignKey("IdService")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("EntiteAdministratif");
 
                     b.Navigation("Service");
                 });
@@ -500,6 +539,32 @@ namespace GestionCirculationWeb.Migrations
                     b.Navigation("EntiteDJ");
                 });
 
+            modelBuilder.Entity("GestionCourrier.Models.Transaction", b =>
+                {
+                    b.HasOne("GestionCourrier.Models.Service", "DestinationService")
+                        .WithMany()
+                        .HasForeignKey("DestinationServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GestionCourrier.Models.Utilisateur", "DestinationUser")
+                        .WithMany()
+                        .HasForeignKey("DestinationUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GestionCourrier.Models.Service", "SourceService")
+                        .WithMany()
+                        .HasForeignKey("SourceServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DestinationService");
+
+                    b.Navigation("DestinationUser");
+
+                    b.Navigation("SourceService");
+                });
+
             modelBuilder.Entity("GestionCourrier.Models.Utilisateur", b =>
                 {
                     b.HasOne("GestionCourrier.Models.Service", "Service")
@@ -509,11 +574,6 @@ namespace GestionCirculationWeb.Migrations
                         .IsRequired();
 
                     b.Navigation("Service");
-                });
-
-            modelBuilder.Entity("GestionCourrier.Models.Entite", b =>
-                {
-                    b.Navigation("Circulations");
                 });
 
             modelBuilder.Entity("GestionCourrier.Models.EntiteDJ", b =>

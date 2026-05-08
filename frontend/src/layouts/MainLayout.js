@@ -1,82 +1,73 @@
-import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 
 function MainLayout({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
+  const currentLanguage = (i18n.resolvedLanguage || i18n.language || 'fr').split('-')[0];
+
+  useEffect(() => {
+    document.documentElement.dir = currentLanguage === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = currentLanguage;
+  }, [currentLanguage]);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
-  const getMenuItems = () => {
-    const serviceName = user?.nomService?.toLowerCase() || '';
-
-    if (serviceName.includes('admin') || serviceName.includes('informatique')) {
-      return [
-        { label: 'Gérer les courriers', path: '/courriers' },
-        { label: 'Registre', path: '/registre' },
-        { label: 'Consulter messages et contenus administratifs', path: '/messages-administratifs' },
-        { label: 'Consulter acteurs et messageries judiciaires', path: '/acteurs-judiciaires' },
-        { label: 'Enregistrer des transactions', path: '/transactions' },
-        { label: 'Notification transaction', path: '/notifications' },
-        { label: 'Archiver Entité / OU', path: '/archives' },
-        { label: 'Gérer les équipements', path: '/equipements' },
-        { label: 'Gérer les services', path: '/services' },
-        { label: 'Gérer les utilisateurs', path: '/utilisateurs' },
-      ];
-    }
-    if (serviceName.includes('caisse')) {
-      return [
-        { label: 'Registre des transactions', path: '/registre-transactions' },
-        { label: 'Notification transaction', path: '/notifications' },
-        { label: 'Archive EntitéDJ', path: '/archives-entite-dj' },
-        { label: 'Consulter actes et messages judiciaires', path: '/actes-messages' },
-      ];
-    }
-    if (serviceName.includes('enregistrement')) {
-      return [
-        { label: 'Gestion des transactions', path: '/gestion-transactions' },
-        { label: 'Consulter entités juridiques', path: '/entites-juridiques' },
-        { label: 'Notification transaction', path: '/notifications' },
-        { label: 'Archive EntitéUI', path: '/archives-entite-ui' },
-        { label: 'Registre générateur', path: '/registre-generateur' },
-      ];
-    }
-    if (serviceName.includes('greffier') || serviceName.includes('ouverture')) {
-      return [
-        { label: 'Créer dossier juridique', path: '/creer-dossier' },
-        { label: 'Générer numéro de dossier', path: '/numeros-dossier' },
-        { label: 'Consulter dossiers en cours', path: '/dossiers-encours' },
-        { label: 'Transférer dossier', path: '/transferer-dossier' },
-        { label: 'Suivi des retraits', path: '/retraits' },
-      ];
-    }
-    return [
-      { label: 'Consulter les dossiers', path: '/consulter-dossiers' },
-      { label: 'Rechercher un dossier', path: '/rechercher' },
-    ];
+  const changeLanguage = (lng) => {
+    i18n.changeLanguage(lng);
+    localStorage.setItem('i18nextLng', lng);
   };
 
-  const menuItems = getMenuItems();
+  const menuItems = [
+    { labelKey: 'dashboard', icon: 'grid', path: '/dashboard' },
+    { labelKey: 'menu_courriers', icon: 'mail', path: '/courriers' },
+    { labelKey: 'menu_dossiers_juridiques', icon: 'folder', path: '/courriers-juridiques' },
+    { labelKey: 'menu_archives_juridiques', icon: 'archive', path: '/archives-juridiques' },
+    { labelKey: 'consulter', icon: 'eye', path: '/messages-administratifs' },
+    { labelKey: 'menu_acteurs_judiciaires', icon: 'users', path: '/acteurs-judiciaires' },
+    { labelKey: 'mes_entites', icon: 'building', path: '/mes-entites' },
+    { labelKey: 'registre_transactions', icon: 'send', path: '/transactions-outgoing' },
+    { labelKey: 'notifications', icon: 'bell', path: '/notifications' },
+    { labelKey: 'equipements', icon: 'settings', path: '/equipements' },
+    { labelKey: 'services', icon: 'service', path: '/services' },
+    { labelKey: 'utilisateurs', icon: 'users', path: '/utilisateurs' }
+  ];
+
+  const displayName = user?.nomComplet || user?.login || t('administrateur');
+  const serviceLabel = user?.nomService || 'IT';
 
   return (
     <div className="app-layout">
-      <div className="main-content">
-        {children}
-      </div>
-      <div className="sidebar">
+      <aside className="sidebar">
+        <div className="sidebar-brand"><div className="brand-mark">⚖</div></div>
         <div className="user-info">
-          {user?.nomComplet || user?.login}
+          <div className="user-avatar"></div>
+          <div><strong>{displayName}</strong><span>{serviceLabel}</span><small>{t('connecte')}</small></div>
         </div>
-        {menuItems.map((item, idx) => (
-          <Link key={idx} to={item.path}>{item.label}</Link>
-        ))}
-        <hr />
-        <button onClick={handleLogout} className="logout-btn">Déconnexion</button>
-      </div>
+        <div className="language-switcher">
+          <button onClick={() => changeLanguage('fr')} className={currentLanguage === 'fr' ? 'active' : ''}><strong>FR</strong><span>FR</span></button>
+          <button onClick={() => changeLanguage('ar')} className={currentLanguage === 'ar' ? 'active' : ''}><strong>AR</strong><span>SA</span></button>
+        </div>
+        <nav className="sidebar-nav">
+          {menuItems.map((item) => (
+            <NavLink key={item.path} to={item.path} className={({ isActive }) => (isActive ? 'active' : '')}>
+              <span className={`nav-icon nav-icon-${item.icon}`}></span>
+              <span>{t(item.labelKey)}</span>
+            </NavLink>
+          ))}
+        </nav>
+        <button onClick={handleLogout} className="logout-btn">
+          <span className="nav-icon nav-icon-logout"></span>
+          <span>{t('deconnexion')}</span>
+        </button>
+      </aside>
+      <main className="main-content">{children}</main>
     </div>
   );
 }

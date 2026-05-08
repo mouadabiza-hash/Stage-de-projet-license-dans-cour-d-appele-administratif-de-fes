@@ -10,7 +10,7 @@ namespace GestionCourrier.Models
             var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
 
             optionsBuilder.UseSqlServer(
-                "Server=msi\\SQLEXPRESS;Database=GestionCourrierDb_New;Trusted_Connection=True;TrustServerCertificate=True;"
+                "Server=.\\SQLEXPRESS;Database=GestionCourrierDb_New;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False;"
             );
 
             return new ApplicationDbContext(optionsBuilder.Options);

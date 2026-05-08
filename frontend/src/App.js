@@ -9,13 +9,18 @@ import GererServices from './pages/GererServices';
 import GererUtilisateurs from './pages/GererUtilisateurs';
 import GererEquipements from './pages/GererEquipements';
 import GererCourriers from './pages/GererCourriers';
-import Registre from './pages/Registre';
+import MesEntites from './pages/MesEntites';
+import TransactionsOutgoing from './pages/TransactionsOutgoing';
+import Notifications from './pages/Notifications';
 import MessagesAdministratifs from './pages/MessagesAdministratifs';
 import ActeursJudiciaires from './pages/ActeursJudiciaires';
+import GererCourriersJuridiques from './pages/GererCourriersJuridiques';
+import GererArchivesJuridiques from './pages/GererArchivesJuridiques';
 // ... puis dans les routes
 
 // ... importez toutes vos pages (equipements, transactions, etc.)
 import './theme.css';
+// ... autres imports
 
 function AppRoutes() {
   const { user } = useAuth();
@@ -30,10 +35,15 @@ function AppRoutes() {
         </PrivateRoute>
       } />
       {/* Routes pour chaque fonctionnalité (selon les paths définis dans le menu) */}
+      <Route path="/dashboard" element={<PrivateRoute><MainLayout><Dashboard /></MainLayout></PrivateRoute>} />
+      <Route path="/mes-entites" element={<PrivateRoute><MainLayout><MesEntites /></MainLayout></PrivateRoute>} />
+      <Route path="/transactions-outgoing" element={<PrivateRoute><MainLayout><TransactionsOutgoing /></MainLayout></PrivateRoute>} />
+      <Route path="/notifications" element={<PrivateRoute><MainLayout><Notifications /></MainLayout></PrivateRoute>} />
       <Route path="/courriers" element={<PrivateRoute><MainLayout><GererCourriers /></MainLayout></PrivateRoute>} />
-      <Route path="/registre" element={<PrivateRoute><MainLayout><Registre /></MainLayout></PrivateRoute>} />
       <Route path="/messages-administratifs" element={<PrivateRoute><MainLayout><MessagesAdministratifs /></MainLayout></PrivateRoute>} />
       <Route path="/acteurs-judiciaires" element={<PrivateRoute><MainLayout><ActeursJudiciaires /></MainLayout></PrivateRoute>} />
+      <Route path="/courriers-juridiques" element={<PrivateRoute><MainLayout><GererCourriersJuridiques /></MainLayout></PrivateRoute>} />
+      <Route path="/archives-juridiques" element={<PrivateRoute><MainLayout><GererArchivesJuridiques /></MainLayout></PrivateRoute>} />
       <Route path="/equipements" element={<PrivateRoute><MainLayout><GererEquipements /></MainLayout></PrivateRoute>} />
       <Route path="/services" element={<PrivateRoute><MainLayout><GererServices /></MainLayout></PrivateRoute>} />
       <Route path="/utilisateurs" element={<PrivateRoute><MainLayout><GererUtilisateurs /></MainLayout></PrivateRoute>} />
