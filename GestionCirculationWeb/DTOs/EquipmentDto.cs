@@ -39,4 +39,8 @@ namespace GestionCourrier.DTOs
         public int? Etat { get; set; }
         public bool? EstCharge { get; set; }
     }
+    public class DechargerDto
+    {
+        public DateTime? DateDechargement { get; set; }
+    }
 }

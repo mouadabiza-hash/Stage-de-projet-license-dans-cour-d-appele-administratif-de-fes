@@ -27,6 +27,7 @@ namespace GestionCourrier.Controllers
         {
             var user = await _context.Utilisateurs
                 .Include(u => u.Service)
+                .Include(u => u.SubstituteUser)
                 .FirstOrDefaultAsync(u => u.Login == dto.Login);
 
             if (user == null)
@@ -39,6 +40,11 @@ namespace GestionCourrier.Controllers
             if (string.IsNullOrEmpty(token))
                 return StatusCode(500, new { message = "Erreur lors de la génération du token" });
 
+            // Fetch the substitute user's service name
+            string? substituteServiceName = null;
+            if (user.SubstituteUser != null)
+                substituteServiceName = user.SubstituteUser.Service?.NomService;
+
             return Ok(new AuthResponseDto
             {
                 Token = token,
@@ -46,18 +52,20 @@ namespace GestionCourrier.Controllers
                 Login = user.Login,
                 NomComplet = user.NomComplet,
                 IdService = user.IdService,
-                NomService = user.Service?.NomService ?? string.Empty
+                NomService = user.Service?.NomService ?? string.Empty,
+                Role = user.Role,
+                SubstituteUserId = user.SubstituteUserId,
+                SubstituteUserName = user.SubstituteUser?.NomComplet,
+                SubstituteServiceName = substituteServiceName
             });
         }
 
         private string GenerateJwtToken(Utilisateur user)
         {
-            // Récupération des valeurs de configuration
             var jwtKey = _configuration["Jwt:Key"];
             var jwtIssuer = _configuration["Jwt:Issuer"];
             var jwtAudience = _configuration["Jwt:Audience"];
 
-            // Vérification explicite de nullité
             if (string.IsNullOrEmpty(jwtKey))
                 throw new InvalidOperationException("La clé JWT (Jwt:Key) est manquante ou vide dans appsettings.json");
             if (string.IsNullOrEmpty(jwtIssuer))
@@ -73,7 +81,8 @@ namespace GestionCourrier.Controllers
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Name, user.Login),
                 new Claim("IdService", user.IdService.ToString()),
-                new Claim("NomService", user.Service?.NomService ?? string.Empty)
+                new Claim("NomService", user.Service?.NomService ?? string.Empty),
+                new Claim(ClaimTypes.Role, user.Role)
             };
 
             var token = new JwtSecurityToken(

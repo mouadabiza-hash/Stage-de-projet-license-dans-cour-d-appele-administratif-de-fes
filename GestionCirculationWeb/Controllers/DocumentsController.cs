@@ -21,52 +21,72 @@ namespace GestionCourrier.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetDocumentsForCurrentService()
+public async Task<IActionResult> GetDocumentsForCurrentService()
+{
+    var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
+    if (user == null) return Unauthorized();
+
+    var serviceIds = new HashSet<int> { user.IdService };
+
+    var substitutedServiceIds = await _context.Utilisateurs
+        .Where(u => u.SubstituteUserId == user.Id)
+        .Select(u => u.IdService)
+        .Distinct()
+        .ToListAsync();
+
+    foreach (var id in substitutedServiceIds)
+        serviceIds.Add(id);
+
+    // ----- ADMINISTRATIF -----
+    var admins = await _context.Entites
+        .Where(e => serviceIds.Contains(e.IdService) && !e.EstArchive && e.EstTransmissible)
+        .Select(e => new
         {
-            var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
-            if (user == null) return Unauthorized();
+            e.IdEntite,
+            e.Sujet,
+            DateCreation = e.DateCreation,
+            e.Source,
+            e.Destinataire,
+            Type = "Administratif",
+            e.IdService,
+            e.IdBureauOrdre,
+            e.Etat,
+            e.Description,
+            e.LienPdf,
+            isSubstitute = e.IdService != user.IdService,
+            NumeroCourrier = string.IsNullOrWhiteSpace(e.IdBureauOrdre) ? e.NumeroDeCourrier : e.IdBureauOrdre,
+            NumeroDossierJudiciaire = (string?)null
+        })
+        .ToListAsync();
 
-            // Return more fields if needed, but at least enough for the list.
-            var admins = await _context.Entites
-                .Where(e => e.IdService == user.IdService && !e.EstArchive && e.EstTransmissible)
-                .Select(e => new
-                {
-                    e.IdEntite,
-                    e.Sujet,
-                    DateCreation = e.DateCreation,
-                    e.Source,
-                    e.Destinataire,
-                    Type = "Administratif",
-                    e.IdService,
-                    e.IdBureauOrdre,
-                    e.Etat,
-                    e.Description,
-                    e.LienPdf
-                })
-                .ToListAsync();
+    // ----- JUDICIAIRE -----
+    var juds = await _context.EntitesDJs
+        .Where(e => serviceIds.Contains(e.IdService) && !e.EstArchive && e.EstTransmissible)
+        .Select(e => new
+        {
+            IdEntite = e.Id,
+            e.Sujet,
+            DateCreation = e.DateArchivage,
+            Source = e.TribunalSource,
+            e.Destinataire,
+            Type = "Judiciaire",
+            e.IdService,
+            e.IdBureauOrdre,
+            Etat = e.EtatArchive,
+            e.Description,
+            e.LienPdf,
+            isSubstitute = e.IdService != user.IdService,
+            NumeroCourrier = e.IdBureauOrdre,
+            NumeroDossierJudiciaire = e.NumeroDossier != null
+                ? $"{e.NumeroDossier.Annee}/{e.NumeroDossier.Nombre}/{e.NumeroDossier.NumeroSujet}"
+                : null,
+            NumeroPremiereInstance = e.NumeroPremiereInstance
+        })
+        .ToListAsync();
 
-            var juds = await _context.EntitesDJs
-                .Where(e => e.IdService == user.IdService && !e.EstArchive && e.EstTransmissible)
-                .Select(e => new
-                {
-                    IdEntite = e.Id,
-                    e.Sujet,
-                    DateCreation = e.DateArchivage,
-                    Source = e.TribunalSource,
-                    e.Destinataire,
-                    Type = "Judiciaire",
-                    e.IdService,
-                    e.IdBureauOrdre,
-                    Etat = e.EtatArchive,
-                    e.Description,
-                    e.LienPdf
-                })
-                .ToListAsync();
-
-            var result = admins.Cast<object>().Concat(juds.Cast<object>());
-            return Ok(result);
-        }
-
+    var result = admins.Cast<object>().Concat(juds.Cast<object>());
+    return Ok(result);
+}
         [HttpGet("{id}")]
         public async Task<IActionResult> GetDocumentById(int id, [FromQuery] string type)
         {

@@ -26,12 +26,11 @@ namespace GestionCourrier.Controllers
             _environment = environment;
         }
 
-        // ========== LISTE UNIFIÉE (toutes les lignes, y compris les Morasalat liées) ==========
+        // ========== LISTE UNIFIÉE (administratif + judiciaire) ==========
         [HttpGet]
         public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? date, string? type)
         {
-            // No filter on ParentId: all records (including linked Morasalat) are displayed
-            var query = GetUnifiedQuery();
+            var query = GetUnifiedQuery().Where(e => e.ParentId == null);
             query = ApplyStructuredFilters(query, numeroBureauOrdre, date, type);
             var courriers = await query
                 .OrderByDescending(e => e.DateCreation)
@@ -197,8 +196,7 @@ namespace GestionCourrier.Controllers
         [HttpGet("search")]
         public async Task<IActionResult> Search(string? motCle, string? numeroBureauOrdre, DateTime? date, string? type)
         {
-            // No ParentId filter
-            var query = GetUnifiedQuery();
+            var query = GetUnifiedQuery().Where(e => e.ParentId == null);
             query = ApplyStructuredFilters(query, numeroBureauOrdre, date, type);
             if (!string.IsNullOrWhiteSpace(motCle))
             {
@@ -216,8 +214,7 @@ namespace GestionCourrier.Controllers
         [HttpGet("export/excel")]
         public async Task<IActionResult> ExportExcel(string? motCle, string? numeroBureauOrdre, DateTime? date, string? type)
         {
-            // No ParentId filter
-            var query = GetUnifiedQuery();
+            var query = GetUnifiedQuery().Where(e => e.ParentId == null);
             query = ApplyStructuredFilters(query, numeroBureauOrdre, date, type);
             if (!string.IsNullOrWhiteSpace(motCle))
             {
@@ -258,7 +255,6 @@ namespace GestionCourrier.Controllers
                 ws.Cell(row, 12).Value = c.Description;
                 row++;
             }
-
             ws.Row(1).Style.Font.Bold = true;
             ws.Row(1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             ws.SheetView.FreezeRows(1);
@@ -275,7 +271,16 @@ namespace GestionCourrier.Controllers
         [HttpPost("import/excel")]
         public async Task<IActionResult> ImportExcel(IFormFile file)
         {
-            if (file == null || file.Length == 0) return BadRequest("Fichier Excel requis.");
+            if (file == null || file.Length == 0)
+                return BadRequest("Fichier Excel requis.");
+
+            var userName = User.Identity?.Name;
+            var currentUser = await _context.Utilisateurs
+                .Include(u => u.Service)
+                .FirstOrDefaultAsync(u => u.Login == userName);
+            if (currentUser == null) return Unauthorized();
+            int defaultServiceId = currentUser.IdService;
+
             using var stream = new MemoryStream();
             await file.CopyToAsync(stream);
             stream.Position = 0;
@@ -286,6 +291,7 @@ namespace GestionCourrier.Controllers
             int imported = 0;
             var errors = new List<string>();
             int lineNumber = 2;
+            var seenIdBureauOrdre = new HashSet<string>();
 
             foreach (var row in rows)
             {
@@ -296,7 +302,6 @@ namespace GestionCourrier.Controllers
                 var destinataire = row.Cell(5).GetString().Trim();
                 var correspondanceSortante = row.Cell(6).GetString().Trim();
                 var correspondanceEntrante = row.Cell(7).GetString().Trim();
-                var serviceText = row.Cell(8).GetString().Trim();
                 var etatText = row.Cell(9).GetString().Trim();
                 var numeroText = row.Cell(10).GetString().Trim();
                 var lienPdf = row.Cell(11).GetString().Trim();
@@ -318,19 +323,22 @@ namespace GestionCourrier.Controllers
                 }
 
                 var lineErrors = new List<string>();
+
                 if (string.IsNullOrWhiteSpace(idBureauOrdre))
                     lineErrors.Add("Numero bureau d'ordre obligatoire");
+                else if (seenIdBureauOrdre.Contains(idBureauOrdre))
+                    lineErrors.Add($"Numero bureau d'ordre '{idBureauOrdre}' dupliqué dans le fichier");
+                else if (await ExistsIdBureauOrdre(idBureauOrdre))
+                    lineErrors.Add($"Numero bureau d'ordre '{idBureauOrdre}' existe déjà dans la base");
+                else
+                    seenIdBureauOrdre.Add(idBureauOrdre);
+
                 if (!TryReadDate(row.Cell(2), dateText, out var dateValue))
                     lineErrors.Add("Date non valide");
                 if (string.IsNullOrWhiteSpace(source))
                     lineErrors.Add("Source obligatoire");
                 if (string.IsNullOrWhiteSpace(sujet))
                     lineErrors.Add("Sujet obligatoire");
-                var service = await FindService(serviceText);
-                if (service == null)
-                    lineErrors.Add($"Service '{serviceText}' introuvable");
-                if (!string.IsNullOrWhiteSpace(idBureauOrdre) && await ExistsIdBureauOrdre(idBureauOrdre))
-                    lineErrors.Add($"Numero bureau d'ordre '{idBureauOrdre}' existe deja");
 
                 if (lineErrors.Any())
                 {
@@ -347,7 +355,7 @@ namespace GestionCourrier.Controllers
                         Source = source,
                         Sujet = sujet,
                         Destinataire = destinataire,
-                        IdService = service!.IdService,
+                        IdService = defaultServiceId,
                         Etat = NormalizeEtat(FromArabicEtat(etatText)),
                         NumeroDeCourrier = numeroText,
                         LienPdf = lienPdf,
@@ -367,8 +375,28 @@ namespace GestionCourrier.Controllers
             return Ok(new { imported, errors });
         }
 
-        // ========== MÉTHODES PRIVÉES ==========
+        [HttpGet("template-excel")]
+        public IActionResult GetTemplateExcel()
+        {
+            using var workbook = new XLWorkbook();
+            var ws = workbook.Worksheets.Add("Template");
+            var headers = new[] { "رقم مكتب الضبط", "التاريخ", "المصدر", "الموضوع", "المرسل إليه", "المراسلات الصادرة", "المراسلات الواردة", "المصلحة", "الحالة", "الرقم الداخلي", "رابط PDF", "الملاحظات / النتيجة" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                ws.Cell(1, i + 1).Value = headers[i];
+                ws.Cell(1, i + 1).Style.Font.Bold = true;
+            }
+            ws.Cell(2, 1).Value = "12/2026";
+            ws.Cell(2, 2).Value = "01/01/2026";
+            ws.Cell(2, 3).Value = "Ministère X";
+            ws.Cell(2, 4).Value = "Objet du courrier";
+            ws.Cell(2, 8).Value = "خلية المعلوميات";
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "modele_import_courriers.xlsx");
+        }
 
+        // ========== MÉTHODES PRIVÉES ==========
         private IQueryable<UnifiedCourrier> GetUnifiedQuery()
         {
             var administratifs = _context.Entites
@@ -499,13 +527,11 @@ namespace GestionCourrier.Controllers
             serviceNom = e.Service?.NomService
         };
 
-        // ========== UNICITÉ GLOBALE ==========
         private async Task<(string idBureauOrdre, int? parentId, string direction, string? typeCorrespondance)> ProcessRegistrationLogic(CourrierAdministratifRequest request, int? excludeId)
         {
             var typeRegistre = NormalizeTypeRegistre(request.TypeRegistre);
             var typeCorrespondance = NormalizeTypeCorrespondance(request.TypeCorrespondance, request.Direction);
             var direction = NormalizeDirection(request.Direction);
-
             var idBureauOrdre = request.IdBureauOrdre!.Trim();
 
             if (await ExistsIdBureauOrdre(idBureauOrdre, excludeId))
@@ -532,8 +558,7 @@ namespace GestionCourrier.Controllers
             var conflict = await _context.EntitesDJs.AnyAsync(e =>
                 (e.NumeroDossier != null &&
                     (e.NumeroDossier.Annee.ToString() + "/" + e.NumeroDossier.Nombre.ToString() + "/" + e.NumeroDossier.NumeroSujet.ToString()) == normalized) ||
-                (e.IdBureauOrdre != null && e.IdBureauOrdre.Trim() == normalized)
-            );
+                (e.IdBureauOrdre != null && e.IdBureauOrdre.Trim() == normalized));
             return !conflict;
         }
 
@@ -567,10 +592,6 @@ namespace GestionCourrier.Controllers
             return null;
         }
 
-        private async Task<Service?> FindService(string value) =>
-            int.TryParse(value, out var id) ? await _context.Services.FirstOrDefaultAsync(s => s.IdService == id) :
-            await _context.Services.FirstOrDefaultAsync(s => s.NomService == value);
-
         private static IQueryable<UnifiedCourrier> ApplyStructuredFilters(IQueryable<UnifiedCourrier> query, string? numeroBureauOrdre, DateTime? date, string? type)
         {
             if (!string.IsNullOrWhiteSpace(numeroBureauOrdre))
@@ -589,10 +610,7 @@ namespace GestionCourrier.Controllers
                 else if (normalized.Equals(TypeCorrespondanceEntrante, StringComparison.OrdinalIgnoreCase))
                     query = query.Where(e => e.TypeCorrespondance == TypeCorrespondanceEntrante || e.Direction == "Interne");
                 else
-                {
-                    var dir = NormalizeDirection(type);
-                    query = query.Where(e => e.Direction == dir);
-                }
+                    query = query.Where(e => e.Direction == NormalizeDirection(type));
             }
             return query;
         }
@@ -654,7 +672,6 @@ namespace GestionCourrier.Controllers
         }
     }
 
-    // DTO interne pour l'unification
     public class UnifiedCourrier
     {
         public int Id { get; set; }

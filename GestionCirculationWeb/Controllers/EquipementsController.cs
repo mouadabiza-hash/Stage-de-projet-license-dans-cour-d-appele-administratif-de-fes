@@ -1,9 +1,9 @@
 using ClosedXML.Excel;
+using GestionCourrier.DTOs;   // ← ADD THIS
 using GestionCourrier.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Text;
 
 namespace GestionCourrier.Controllers
 {
@@ -13,125 +13,103 @@ namespace GestionCourrier.Controllers
     public class EquipementsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
-        public EquipementsController(ApplicationDbContext context) => _context = context;
 
-        // GET: api/equipements?search=&type=&etat=&decharge=
-        [HttpGet]
-        public async Task<IActionResult> GetAll(
-            [FromQuery] string? search,
-            [FromQuery] int? type,
-            [FromQuery] int? etat,
-            [FromQuery] bool? decharge)
+        public EquipementsController(ApplicationDbContext context)
         {
-            try
-            {
-                var query = _context.Equipements.AsQueryable();
-                if (!string.IsNullOrEmpty(search))
-                    query = query.Where(e => e.Serial.ToString().Contains(search));
-                if (type.HasValue)
-                    query = query.Where(e => e.Type == type);
-                if (etat.HasValue)
-                    query = query.Where(e => e.Etat == etat);
-                if (decharge == true)
-                    query = query.Where(e => e.EstCharge == false);
-
-                var equipements = await query.ToListAsync();
-                var serviceIds = equipements.Select(e => e.IdService).Distinct();
-                var services = await _context.Services
-                    .Where(s => serviceIds.Contains(s.IdService))
-                    .ToDictionaryAsync(s => s.IdService);
-
-                var result = equipements.Select(e => new
-                {
-                    e.Id,
-                    e.Serial,
-                    e.Type,
-                    e.Etat,
-                    e.IdService,
-                    e.EstCharge,
-                    e.DateDechargement,
-                    ServiceNom = services.ContainsKey(e.IdService) ? services[e.IdService].NomService : null,
-                    ServiceEtage = services.ContainsKey(e.IdService) ? services[e.IdService].Etage : null
-                });
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { error = ex.Message });
-            }
+            _context = context;
         }
 
-        [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(int id)
+        [HttpGet]
+        public async Task<IActionResult> Get([FromQuery] string? search, [FromQuery] int? type, [FromQuery] int? etat, [FromQuery] bool? decharge)
         {
-            var eq = await _context.Equipements.FindAsync(id);
-            return eq == null ? NotFound() : Ok(eq);
+            var query = _context.Equipements.Include(e => e.Service).AsQueryable();
+            if (!string.IsNullOrWhiteSpace(search))
+                query = query.Where(e => e.Serial.ToString().Contains(search) || (e.Service != null && e.Service.NomService.Contains(search)));
+            if (type.HasValue) query = query.Where(e => e.Type == type.Value);
+            if (etat.HasValue) query = query.Where(e => e.Etat == etat.Value);
+            if (decharge == true) query = query.Where(e => !e.EstCharge);
+            var equipements = await query.ToListAsync();
+            return Ok(equipements.Select(e => new
+            {
+                e.Id,
+                e.Serial,
+                e.Type,
+                e.Etat,
+                e.IdService,
+                e.EstCharge,
+                e.DateDechargement,
+                ServiceNom = e.Service?.NomService
+            }));
         }
 
         [HttpPost]
-        public async Task<IActionResult> Create(Equipment model)
+        public async Task<IActionResult> Create([FromBody] CreateEquipmentDto dto)
         {
-            if (model.Serial <= 0) return BadRequest("Série invalide");
-            if (!await _context.Services.AnyAsync(s => s.IdService == model.IdService))
-                return BadRequest("Service inexistant");
-            model.EstCharge = false;
-            model.DateDechargement = null;
-            _context.Equipements.Add(model);
+            if (await _context.Equipements.AnyAsync(e => e.Serial == dto.Serial))
+                return BadRequest("Un équipement avec ce numéro de série existe déjà.");
+            var equip = new Equipment
+            {
+                Serial = dto.Serial,
+                Type = dto.Type,
+                Etat = dto.Etat,
+                IdService = dto.IdService,
+                EstCharge = true,
+                DateDechargement = null
+            };
+            _context.Equipements.Add(equip);
             await _context.SaveChangesAsync();
-            return Ok(model);
+            return Ok(equip);
         }
 
         [HttpPut("{id}")]
-        public async Task<IActionResult> Update(int id, Equipment model)
+        public async Task<IActionResult> Update(int id, [FromBody] UpdateEquipmentDto dto)
         {
-            if (id != model.Id) return BadRequest("ID mismatch");
-            var existing = await _context.Equipements.FindAsync(id);
-            if (existing == null) return NotFound();
-            existing.Serial = model.Serial;
-            existing.Type = model.Type;
-            existing.Etat = model.Etat;
-            existing.IdService = model.IdService;
+            var equip = await _context.Equipements.FindAsync(id);
+            if (equip == null) return NotFound();
+            equip.Serial = dto.Serial;
+            equip.Type = dto.Type;
+            equip.Etat = dto.Etat;
+            equip.IdService = dto.IdService;
             await _context.SaveChangesAsync();
-            return Ok(existing);
-        }
-
-        [HttpPost("{id}/charger")]
-        public async Task<IActionResult> Charger(int id)
-        {
-            var eq = await _context.Equipements.FindAsync(id);
-            if (eq == null) return NotFound();
-            eq.EstCharge = true;
-            eq.DateDechargement = null;
-            await _context.SaveChangesAsync();
-            return Ok(eq);
-        }
-
-        [HttpPost("{id}/decharger")]
-        public async Task<IActionResult> Decharger(int id)
-        {
-            var eq = await _context.Equipements.FindAsync(id);
-            if (eq == null) return NotFound();
-            eq.EstCharge = false;
-            eq.DateDechargement = DateTime.Now;
-            await _context.SaveChangesAsync();
-            return Ok(eq);
+            return Ok();
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var eq = await _context.Equipements.FindAsync(id);
-            if (eq == null) return NotFound();
-            _context.Equipements.Remove(eq);
+            var equip = await _context.Equipements.FindAsync(id);
+            if (equip == null) return NotFound();
+            _context.Equipements.Remove(equip);
             await _context.SaveChangesAsync();
             return Ok();
         }
 
-        // EXPORT EXCEL (avec libellés)
+        [HttpPost("{id}/charger")]
+        public async Task<IActionResult> Charger(int id)
+        {
+            var equip = await _context.Equipements.FindAsync(id);
+            if (equip == null) return NotFound();
+            equip.EstCharge = true;
+            equip.DateDechargement = null;
+            await _context.SaveChangesAsync();
+            return Ok();
+        }
+
+        [HttpPost("{id}/decharger")]
+        public async Task<IActionResult> Decharger(int id, [FromBody] DechargerDto? dto)
+        {
+            var equip = await _context.Equipements.FindAsync(id);
+            if (equip == null) return NotFound();
+            equip.EstCharge = false;
+            equip.DateDechargement = dto?.DateDechargement ?? DateTime.Now;
+            await _context.SaveChangesAsync();
+            return Ok();
+        }
+
         [HttpGet("export/excel")]
         public async Task<IActionResult> ExportExcel()
         {
-            var data = await _context.Equipements.Include(e => e.Service).ToListAsync();
+            var equipements = await _context.Equipements.Include(e => e.Service).ToListAsync();
             using var workbook = new XLWorkbook();
             var ws = workbook.Worksheets.Add("Equipements");
             ws.Cell(1, 1).Value = "ID";
@@ -139,32 +117,16 @@ namespace GestionCourrier.Controllers
             ws.Cell(1, 3).Value = "Type";
             ws.Cell(1, 4).Value = "État";
             ws.Cell(1, 5).Value = "Service ID";
-            ws.Cell(1, 6).Value = "Service Nom";
+            ws.Cell(1, 6).Value = "Service";
             ws.Cell(1, 7).Value = "Chargé";
-            ws.Cell(1, 8).Value = "Date déchargement";
+            ws.Cell(1, 8).Value = "Date de décharge";
             int row = 2;
-            foreach (var e in data)
+            foreach (var e in equipements)
             {
-                string typeLib = e.Type switch
-                {
-                    1 => "Ordinateur",
-                    2 => "Imprimante",
-                    3 => "Scanner",
-                    4 => "Photocopieur",
-                    _ => e.Type.ToString()
-                };
-                string etatLib = e.Etat switch
-                {
-                    1 => "Neuf",
-                    2 => "Bon état",
-                    3 => "À réparer",
-                    4 => "Hors service",
-                    _ => e.Etat.ToString()
-                };
                 ws.Cell(row, 1).Value = e.Id;
                 ws.Cell(row, 2).Value = e.Serial;
-                ws.Cell(row, 3).Value = typeLib;
-                ws.Cell(row, 4).Value = etatLib;
+                ws.Cell(row, 3).Value = e.Type;
+                ws.Cell(row, 4).Value = e.Etat;
                 ws.Cell(row, 5).Value = e.IdService;
                 ws.Cell(row, 6).Value = e.Service?.NomService;
                 ws.Cell(row, 7).Value = e.EstCharge ? "Oui" : "Non";
@@ -177,129 +139,118 @@ namespace GestionCourrier.Controllers
             return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "equipements.xlsx");
         }
 
-        // PREVIEW IMPORT – lit les en-têtes
-        // PREVIEW – Lit les en-têtes
-[HttpPost("import/preview")]
-public async Task<IActionResult> PreviewImport(IFormFile file)
-{
-    if (file == null || file.Length == 0)
-        return BadRequest("Fichier requis");
-    using var stream = new MemoryStream();
-    await file.CopyToAsync(stream);
-    using var workbook = new XLWorkbook(stream);
-    var ws = workbook.Worksheet(1);
-    var headers = ws.Row(1).CellsUsed().Select(c => c.GetString().Trim()).ToList();
-    return Ok(headers);
-}
-
-// EXECUTE – Import avec mapping et rapport d'erreurs
-[HttpPost("import/execute")]
-public async Task<IActionResult> ExecuteImport(
-    [FromForm] IFormFile file,
-    [FromQuery] string colSerie,
-    [FromQuery] string colType,
-    [FromQuery] string colEtat,
-    [FromQuery] string colServiceId)
-{
-    if (file == null) return BadRequest("Fichier requis");
-    using var stream = new MemoryStream();
-    await file.CopyToAsync(stream);
-    using var workbook = new XLWorkbook(stream);
-    var ws = workbook.Worksheet(1);
-    var headerRow = ws.Row(1);
-
-    // 1. Vérifier que les colonnes choisies existent
-    int idxSerie = -1, idxType = -1, idxEtat = -1, idxService = -1;
-    var colIndex = new Dictionary<string, int>();
-    for (int c = 1; c <= headerRow.LastCellUsed().Address.ColumnNumber; c++)
-    {
-        string val = headerRow.Cell(c).GetString().Trim();
-        if (!string.IsNullOrEmpty(val))
-            colIndex[val] = c;
-    }
-    if (!colIndex.TryGetValue(colSerie, out idxSerie) ||
-        !colIndex.TryGetValue(colType, out idxType) ||
-        !colIndex.TryGetValue(colEtat, out idxEtat) ||
-        !colIndex.TryGetValue(colServiceId, out idxService))
-    {
-        return BadRequest("Une ou plusieurs colonnes sélectionnées n'existent pas dans le fichier.");
-    }
-
-    var rows = ws.RowsUsed().Skip(1);
-    int imported = 0;
-    var errors = new List<string>();
-    int lineNum = 2;
-
-    foreach (var row in rows)
-    {
-        string serieStr = row.Cell(idxSerie).GetString().Trim();
-        string typeStr = row.Cell(idxType).GetString().Trim();
-        string etatStr = row.Cell(idxEtat).GetString().Trim();
-        string serviceStr = row.Cell(idxService).GetString().Trim();
-
-        var lineErrors = new List<string>();
-
-        if (!int.TryParse(serieStr, out int serie))
-            lineErrors.Add($"Série '{serieStr}' non valide");
-        if (!int.TryParse(serviceStr, out int idService))
-            lineErrors.Add($"Service ID '{serviceStr}' non valide");
-        int type = ParseImportValue(typeStr);
-        if (type == 0)
-            lineErrors.Add($"Type '{typeStr}' non reconnu (ex: Ordinateur, Imprimante, ou 1,2,3,4)");
-        int etat = ParseImportValue(etatStr);
-        if (etat == 0)
-            lineErrors.Add($"État '{etatStr}' non reconnu (ex: Neuf, Bon état, ou 1,2,3,4)");
-
-        if (idService != 0 && !await _context.Services.AnyAsync(s => s.IdService == idService))
-            lineErrors.Add($"Service ID {idService} inexistant");
-
-        if (lineErrors.Any())
+        [HttpPost("import/preview")]
+        public async Task<IActionResult> ImportPreview(IFormFile file)
         {
-            errors.Add($"Ligne {lineNum} : {string.Join(" | ", lineErrors)}");
+            if (file == null || file.Length == 0) return BadRequest("Fichier requis.");
+            using var stream = file.OpenReadStream();
+            using var workbook = new XLWorkbook(stream);
+            var ws = workbook.Worksheet(1);
+            var headers = ws.Row(1).Cells().Select(c => c.GetString().Trim()).ToList();
+            return Ok(headers);
         }
-        else
+
+        [HttpPost("import/execute")]
+        public async Task<IActionResult> ImportExecute(IFormFile file,
+            [FromQuery] string colSerie,
+            [FromQuery] string colType,
+            [FromQuery] string colEtat,
+            [FromQuery] string colServiceId)
         {
-            _context.Equipements.Add(new Equipment
+            if (file == null || file.Length == 0) return BadRequest("Fichier requis.");
+            if (string.IsNullOrWhiteSpace(colSerie) || string.IsNullOrWhiteSpace(colType) ||
+                string.IsNullOrWhiteSpace(colEtat) || string.IsNullOrWhiteSpace(colServiceId))
+                return BadRequest("Veuillez associer toutes les colonnes obligatoires.");
+
+            using var stream = file.OpenReadStream();
+            using var workbook = new XLWorkbook(stream);
+            var ws = workbook.Worksheet(1);
+            var headerRow = ws.Row(1);
+            var headers = headerRow.Cells().Select(c => c.GetString().Trim()).ToList();
+            int idxSerie = headers.FindIndex(h => h == colSerie);
+            int idxType = headers.FindIndex(h => h == colType);
+            int idxEtat = headers.FindIndex(h => h == colEtat);
+            int idxService = headers.FindIndex(h => h == colServiceId);
+            if (idxSerie == -1 || idxType == -1 || idxEtat == -1 || idxService == -1)
+                return BadRequest("Colonne(s) introuvable(s) dans le fichier.");
+
+            var rows = ws.RowsUsed().Skip(1);
+            int imported = 0;
+            var errors = new List<string>();
+            int lineNumber = 2;
+            var seenSerials = new HashSet<int>();
+            var services = await _context.Services.ToDictionaryAsync(s => s.NomService, s => s.IdService);
+            foreach (var row in rows)
             {
-                Serial = serie,
-                Type = type,
-                Etat = etat,
-                IdService = idService,
-                EstCharge = false,
-                DateDechargement = null
-            });
-            imported++;
+                var serieStr = row.Cell(idxSerie + 1).GetString().Trim();
+                var typeStr = row.Cell(idxType + 1).GetString().Trim();
+                var etatStr = row.Cell(idxEtat + 1).GetString().Trim();
+                var serviceVal = row.Cell(idxService + 1).GetString().Trim();
+                var lineErrors = new List<string>();
+
+                if (!int.TryParse(serieStr, out int serie)) lineErrors.Add("Série invalide");
+                else if (seenSerials.Contains(serie)) lineErrors.Add($"Série '{serie}' dupliquée dans le fichier");
+                else if (await _context.Equipements.AnyAsync(e => e.Serial == serie)) lineErrors.Add($"Série '{serie}' existe déjà dans la base");
+                else seenSerials.Add(serie);
+
+                if (!int.TryParse(typeStr, out int type) || type < 1 || type > 4) lineErrors.Add("Type invalide (1..4)");
+                if (!int.TryParse(etatStr, out int etat) || etat < 1 || etat > 4) lineErrors.Add("État invalide (1..4)");
+
+                if (string.IsNullOrWhiteSpace(serviceVal)) lineErrors.Add("Service obligatoire");
+                else
+                {
+                    int serviceId;
+                    if (int.TryParse(serviceVal, out serviceId))
+                    {
+                        if (!await _context.Services.AnyAsync(s => s.IdService == serviceId))
+                            lineErrors.Add($"Service ID {serviceId} introuvable");
+                    }
+                    else
+                    {
+                        if (!services.TryGetValue(serviceVal, out serviceId))
+                            lineErrors.Add($"Service '{serviceVal}' introuvable");
+                    }
+                }
+
+                if (lineErrors.Any())
+                    errors.Add($"Ligne {lineNumber}: {string.Join(" | ", lineErrors)}");
+                else
+                {
+                    _context.Equipements.Add(new Equipment
+                    {
+                        Serial = serie,
+                        Type = type,
+                        Etat = etat,
+                        IdService = int.TryParse(serviceVal, out int sid) ? sid : services[serviceVal],
+                        EstCharge = true,
+                        DateDechargement = null
+                    });
+                    imported++;
+                }
+                lineNumber++;
+            }
+            await _context.SaveChangesAsync();
+            return Ok(new { imported, errors });
         }
-        lineNum++;
-    }
 
-    await _context.SaveChangesAsync();
-
-    var result = new { imported = imported, errors = errors };
-    if (errors.Any())
-        return Ok(new { message = $"{imported} équipements importés, {errors.Count} lignes ignorées.", details = errors });
-    else
-        return Ok(new { message = $"{imported} équipements importés avec succès.", details = new string[0] });
-}
-
-private int ParseImportValue(string input)
-{
-    if (string.IsNullOrWhiteSpace(input)) return 0;
-    if (int.TryParse(input, out int code) && code >= 1 && code <= 4)
-        return code;
-    return input.Trim() switch
-    {
-        "Ordinateur" => 1,
-        "Imprimante" => 2,
-        "Scanner" => 3,
-        "Photocopieur" => 4,
-        "Neuf" => 1,
-        "Bon état" => 2,
-        "À réparer" => 3,
-        "Hors service" => 4,
-        _ => 0
-    };
-}
-        
+        [HttpGet("template-excel")]
+        public IActionResult GetTemplateExcel()
+        {
+            using var workbook = new XLWorkbook();
+            var ws = workbook.Worksheets.Add("Modele");
+            var headers = new[] { "Série", "Type", "État", "Service (ID ou nom)" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                ws.Cell(1, i + 1).Value = headers[i];
+                ws.Cell(1, i + 1).Style.Font.Bold = true;
+            }
+            ws.Cell(2, 1).Value = 123456;
+            ws.Cell(2, 2).Value = 1;
+            ws.Cell(2, 3).Value = 1;
+            ws.Cell(2, 4).Value = "خلية المعلوميات";
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "modele_import_equipements.xlsx");
+        }
     }
 }

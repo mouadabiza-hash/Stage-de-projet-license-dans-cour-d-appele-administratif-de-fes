@@ -3,13 +3,14 @@ import { Link } from 'react-router-dom';
 function GreffierDashboard() {
   return (
     <div>
-      <h1>Dashboard Greffier (Bureau d'ouverture)</h1>
+      <h1>Tableau de bord – Greffier</h1>
       <ul>
-        <li><Link to="/creer-dossier">Créer un dossier juridique</Link></li>
-        <li><Link to="/numeros-dossier">Générer / attribuer numéro de dossier</Link></li>
-        <li><Link to="/dossiers-encours">Consulter les dossiers en cours</Link></li>
-        <li><Link to="/transferer-dossier">Transférer un dossier</Link></li>
-        <li><Link to="/retraits">Suivi des retraits</Link></li>
+        <li><Link to="/courriers">Gérer les courriers (administratif & juridique)</Link></li>
+        <li><Link to="/mes-entites">Mes entités</Link></li>
+        <li><Link to="/transactions-outgoing">Registre des transactions</Link></li>
+        <li><Link to="/notifications">Notifications</Link></li>
+        <li><Link to="/equipements">Gérer les équipements</Link></li>
+        <li><Link to="/dossier-search">Recherche de dossiers</Link></li>
       </ul>
     </div>
   );

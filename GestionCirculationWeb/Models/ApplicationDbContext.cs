@@ -59,6 +59,12 @@ namespace GestionCourrier.Models
                 .WithMany(s => s.Utilisateurs)
                 .HasForeignKey(u => u.IdService)
                 .OnDelete(DeleteBehavior.Restrict);
+           
+            modelBuilder.Entity<Utilisateur>()
+                .HasOne(u => u.SubstituteUser)
+                .WithMany()
+                .HasForeignKey(u => u.SubstituteUserId)
+                .OnDelete(DeleteBehavior.Restrict);  // no cascade cycle
 
             // Relation 1-1 entre EntiteDJ et NumeroDossierJuridique
             modelBuilder.Entity<NumeroDossierJuridique>()
@@ -104,6 +110,8 @@ namespace GestionCourrier.Models
             modelBuilder.Entity<Entite>()
                 .Property(e => e.TypeGenerale)
                 .HasConversion<int>();
-        }
+           
+            // Substitutions – prevent multiple cascade paths
+          }
     }
 }

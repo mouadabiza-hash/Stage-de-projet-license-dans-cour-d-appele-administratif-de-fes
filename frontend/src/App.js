@@ -16,6 +16,8 @@ import MessagesAdministratifs from './pages/MessagesAdministratifs';
 import ActeursJudiciaires from './pages/ActeursJudiciaires';
 import GererCourriersJuridiques from './pages/GererCourriersJuridiques';
 import GererArchivesJuridiques from './pages/GererArchivesJuridiques';
+import DossierSearch from './pages/DossierSearch';
+import Profile from './pages/Profile';
 // ... puis dans les routes
 
 // ... importez toutes vos pages (equipements, transactions, etc.)
@@ -26,15 +28,10 @@ function AppRoutes() {
   const { user } = useAuth();
   return (
     <Routes>
+     {/* Routes pour chaque fonctionnalité (selon les paths définis dans le menu) */}
+      <Route path="/dossier-search" element={<PrivateRoute><MainLayout><DossierSearch /></MainLayout></PrivateRoute>} />
       <Route path="/login" element={<Login />} />
-      <Route path="/dashboard" element={
-        <PrivateRoute>
-          <MainLayout>
-            <Dashboard />
-          </MainLayout>
-        </PrivateRoute>
-      } />
-      {/* Routes pour chaque fonctionnalité (selon les paths définis dans le menu) */}
+      <Route path="/dashboard" element={<PrivateRoute><MainLayout><Dashboard /></MainLayout></PrivateRoute>} />
       <Route path="/dashboard" element={<PrivateRoute><MainLayout><Dashboard /></MainLayout></PrivateRoute>} />
       <Route path="/mes-entites" element={<PrivateRoute><MainLayout><MesEntites /></MainLayout></PrivateRoute>} />
       <Route path="/transactions-outgoing" element={<PrivateRoute><MainLayout><TransactionsOutgoing /></MainLayout></PrivateRoute>} />
@@ -47,7 +44,7 @@ function AppRoutes() {
       <Route path="/equipements" element={<PrivateRoute><MainLayout><GererEquipements /></MainLayout></PrivateRoute>} />
       <Route path="/services" element={<PrivateRoute><MainLayout><GererServices /></MainLayout></PrivateRoute>} />
       <Route path="/utilisateurs" element={<PrivateRoute><MainLayout><GererUtilisateurs /></MainLayout></PrivateRoute>} />
-      {/* ... ajoutez les autres routes */}
+      <Route path="/profile" element={<PrivateRoute><MainLayout><Profile /></MainLayout></PrivateRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" />} />
     </Routes>
   );

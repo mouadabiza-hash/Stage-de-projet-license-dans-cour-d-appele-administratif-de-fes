@@ -1,10 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../context/AuthContext';
 
 function ActeursJudiciaires() {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage?.startsWith('ar') ? 'ar-MA' : 'fr-FR';
+  const { user } = useAuth();
+  const role = user?.role;
+
+  const showBureauOrdre = role === 'Admin' || role === 'Greffier';
+  const showNumeroDossier = role !== 'Greffier';
+
   const [items, setItems] = useState([]);
   const [motCle, setMotCle] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,9 +49,21 @@ function ActeursJudiciaires() {
       <div className="data-table-wrapper">
         <table className="modern-table">
           <thead>
-            <tr><th>{t('date')}</th><th>{t('tribunal_source')}</th><th>{t('numero_dossier')}</th><th>{t('objet')}</th>
-              <th>{t('direction')}</th><th>{t('destinataire')}</th><th>{t('service')}</th><th>{t('transmissible')}</th>
-              <th>{t('etat')}</th><th>{t('emplacement')}</th><th>{t('retraits')}</th><th>PDF</th>
+            <tr>
+              <th>{t('date')}</th>
+              <th>{t('tribunal_source')}</th>
+              {showNumeroDossier && <th>{t('numero_dossier')}</th>}
+              <th>{t('numero_premiere_instance') || 'الرقم الابتدائي'}</th>
+              <th>{t('objet')}</th>
+              <th>{t('direction')}</th>
+              {showBureauOrdre && <th>{t('service')}</th>}   {/* we actually want bureau ordre column, not service; corrected below */}
+              {/* I’ll put the bureau ordre column separately */}
+              {showBureauOrdre && <th>{t('numero_bureau_ordre') || "رقم مكتب الضبط"}</th>}
+              <th>{t('transmissible')}</th>
+              <th>{t('etat')}</th>
+              <th>{t('emplacement')}</th>
+              <th>{t('retraits')}</th>
+              <th>PDF</th>
             </tr>
           </thead>
           <tbody>
@@ -52,10 +71,17 @@ function ActeursJudiciaires() {
             {!loading && items.length === 0 && <tr><td colSpan="12">{t('aucun_element_judiciaire')}</td></tr>}
             {items.map(item => (
               <tr key={item.id}>
-                <td>{formatDate(item.date, locale)}</td><td>{item.tribunalSource || '-'}</td><td>{item.numeroDossier || '-'}</td>
-                <td>{item.sujet || '-'}</td><td>{item.direction || '-'}</td><td>{item.destinataire || '-'}</td>
-                <td>{item.serviceNom || item.idService || '-'}</td><td>{item.estTransmissible ? t('oui') : t('non')}</td>
-                <td>{item.etatArchive || '-'}</td><td>{item.emplacement || '-'}</td><td>{item.retraitsCount ?? 0}</td>
+                <td>{formatDate(item.date, locale)}</td>
+                <td>{item.tribunalSource || '-'}</td>
+                {showNumeroDossier && <td>{item.numeroDossier || '-'}</td>}
+                <td>{item.numeroPremiereInstance || '-'}</td>
+                <td>{item.sujet || '-'}</td>
+                <td>{item.direction || '-'}</td>
+                {showBureauOrdre && <td>{item.idBureauOrdre || '-'}</td>}
+                <td>{item.estTransmissible ? t('oui') : t('non')}</td>
+                <td>{item.etatArchive || '-'}</td>
+                <td>{item.emplacement || '-'}</td>
+                <td>{item.retraitsCount ?? 0}</td>
                 <td>{item.lienPdf ? <a href={item.lienPdf} target="_blank" rel="noreferrer">PDF</a> : '-'}</td>
               </tr>
             ))}

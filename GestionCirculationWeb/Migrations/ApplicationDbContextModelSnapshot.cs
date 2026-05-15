@@ -112,6 +112,9 @@ namespace GestionCirculationWeb.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Cabinet")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("DateArchivage")
                         .HasColumnType("datetime2");
 
@@ -155,6 +158,9 @@ namespace GestionCirculationWeb.Migrations
 
                     b.Property<string>("LienPdf")
                         .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("NumeroPremiereInstance")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int?>("ParentId")
@@ -375,6 +381,15 @@ namespace GestionCirculationWeb.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("AcceptedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AcceptedByUserName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("AcceptedDate")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime>("DateEnvoi")
                         .HasColumnType("datetime2");
 
@@ -389,6 +404,9 @@ namespace GestionCirculationWeb.Migrations
 
                     b.Property<int>("DocumentId")
                         .HasColumnType("int");
+
+                    b.Property<string>("DocumentSujet")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("DocumentType")
                         .IsRequired()
@@ -449,9 +467,14 @@ namespace GestionCirculationWeb.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("SubstituteUserId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("IdService");
+
+                    b.HasIndex("SubstituteUserId");
 
                     b.ToTable("Utilisateurs");
                 });
@@ -573,7 +596,14 @@ namespace GestionCirculationWeb.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("GestionCourrier.Models.Utilisateur", "SubstituteUser")
+                        .WithMany()
+                        .HasForeignKey("SubstituteUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Service");
+
+                    b.Navigation("SubstituteUser");
                 });
 
             modelBuilder.Entity("GestionCourrier.Models.EntiteDJ", b =>

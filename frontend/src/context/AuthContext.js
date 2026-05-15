@@ -11,11 +11,23 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
+    const id = localStorage.getItem('userId');
     const login = localStorage.getItem('login');
     const nomService = localStorage.getItem('nomService');
     const idService = localStorage.getItem('idService');
-    if (token && login) {
-      setUser({ token, login, nomService, idService: parseInt(idService) });
+    const role = localStorage.getItem('role');
+    const substituteUserId = localStorage.getItem('substituteUserId');
+
+    if (token && login && id) {
+      setUser({
+        token,
+        id: parseInt(id),
+        login,
+        nomService,
+        idService: parseInt(idService),
+        role,
+        substituteUserId: substituteUserId ? parseInt(substituteUserId) : null,
+      });
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     }
     setLoading(false);
@@ -23,13 +35,38 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (login, password) => {
     const response = await axios.post('/api/auth/login', { login, password });
-    const { token, id, login: userLogin, nomComplet, idService, nomService } = response.data;
+    const {
+      token,
+      id,
+      login: userLogin,
+      nomComplet,
+      idService,
+      nomService,
+      role,
+      substituteUserId,
+    } = response.data;
+
     localStorage.setItem('token', token);
+    localStorage.setItem('userId', id);
     localStorage.setItem('login', userLogin);
     localStorage.setItem('nomService', nomService);
     localStorage.setItem('idService', idService);
+    localStorage.setItem('role', role);
+    if (substituteUserId) localStorage.setItem('substituteUserId', substituteUserId);
+    else localStorage.removeItem('substituteUserId');
+
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    setUser({ token, login: userLogin, nomComplet, idService, nomService });
+
+    setUser({
+      token,
+      id,
+      login: userLogin,
+      nomComplet,
+      idService,
+      nomService,
+      role,
+      substituteUserId,
+    });
     return response.data;
   };
 
@@ -40,7 +77,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, setUser, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

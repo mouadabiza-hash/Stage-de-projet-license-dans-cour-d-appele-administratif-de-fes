@@ -10,6 +10,7 @@ namespace GestionCourrier.DTOs
 
     public class CreateServiceDto
     {
+        public int IdService { get; set; }
         public string NomService { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public string? Etage { get; set; }

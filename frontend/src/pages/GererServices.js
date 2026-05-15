@@ -1,9 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
+import { usePermissions } from '../hooks/usePermissions';
 
 function GererServices() {
     const { t } = useTranslation();
+    const perms = usePermissions();
+
+    // Directeur and Admin can view; only Admin can manage
+    if (!perms.canViewServices) {
+        return <div className="error-message">{t('access_denied') || 'Accès refusé'}</div>;
+    }
+
     const [services, setServices] = useState([]);
     const [form, setForm] = useState({ idService: '', nomService: '', description: '', etage: '' });
     const [editingId, setEditingId] = useState(null);
@@ -16,6 +24,8 @@ function GererServices() {
     const [headers, setHeaders] = useState([]);
     const [mapping, setMapping] = useState({ id: '', nom: '', description: '', etage: '' });
     const [showMapping, setShowMapping] = useState(false);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [currentPage, setCurrentPage] = useState(1);
 
     const fetchServices = async () => {
         try {
@@ -28,17 +38,29 @@ function GererServices() {
     };
 
     useEffect(() => { fetchServices(); }, [search, filterEtage]);
+    useEffect(() => { setCurrentPage(1); }, [search, filterEtage, services.length]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (!perms.canManageServices) return;
         const idNum = parseInt(form.idService, 10);
         if (isNaN(idNum) || idNum <= 0) { setError(t('erreur_id_positif')); return; }
         if (!form.nomService.trim()) { setError(t('erreur_nom_requis')); return; }
         try {
             if (editingId) {
-                await axios.put(`/api/services/${editingId}`, { idService: idNum, nomService: form.nomService, description: form.description, etage: form.etage || null });
+                await axios.put(`/api/services/${editingId}`, {
+                    idService: idNum,
+                    nomService: form.nomService,
+                    description: form.description,
+                    etage: form.etage || null
+                });
             } else {
-                await axios.post('/api/services', { idService: idNum, nomService: form.nomService, description: form.description, etage: form.etage || null });
+                await axios.post('/api/services', {
+                    idService: idNum,
+                    nomService: form.nomService,
+                    description: form.description,
+                    etage: form.etage || null
+                });
             }
             resetForm();
             fetchServices();
@@ -46,18 +68,19 @@ function GererServices() {
     };
 
     const handleEdit = (s) => {
+        if (!perms.canManageServices) return;
         setEditingId(s.idService);
         setForm({ idService: s.idService, nomService: s.nomService, description: s.description || '', etage: s.etage || '' });
     };
-
     const handleDelete = async (id) => {
+        if (!perms.canManageServices) return;
         if (window.confirm(t('confirmation_supprimer'))) {
             try { await axios.delete(`/api/services/${id}`); fetchServices(); }
             catch (err) { setError(err.response?.data); }
         }
     };
-
     const exportToExcel = () => {
+        if (!perms.canExport) return;
         fetch('/api/services/export/excel', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
             .then(res => res.blob())
             .then(blob => {
@@ -70,8 +93,8 @@ function GererServices() {
             })
             .catch(console.error);
     };
-
     const handleFileSelect = async (e) => {
+        if (!perms.canManageServices) return;
         const file = e.target.files[0];
         if (!file) return;
         setImportFile(file);
@@ -83,9 +106,8 @@ function GererServices() {
             setShowMapping(true);
         } catch (err) { setError(t('erreur_lecture_fichier')); }
     };
-
     const executeImport = async () => {
-        if (!importFile) return;
+        if (!perms.canManageServices || !importFile) return;
         const formData = new FormData();
         formData.append('file', importFile);
         const params = new URLSearchParams({
@@ -97,30 +119,47 @@ function GererServices() {
         try {
             const res = await axios.post(`/api/services/import/execute?${params.toString()}`, formData);
             const data = res.data;
-            if (data.errors && data.errors.length > 0) {
+            if (data.errors && data.errors.length) {
                 alert(`${data.message}\n\n${t('details_erreurs')} :\n${data.errors.join('\n')}`);
-            } else {
-                alert(data.message);
-            }
+            } else { alert(data.message); }
             if (data.imported > 0) fetchServices();
             setShowMapping(false);
             setImportFile(null);
             setMapping({ id: '', nom: '', description: '', etage: '' });
         } catch (err) { setError(t('erreur_import')); }
     };
-
+    const downloadTemplate = () => {
+        if (!perms.canManageServices) return;
+        fetch('/api/services/template-excel', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+            .then(res => res.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'modele_import_services.xlsx';
+                a.click();
+                window.URL.revokeObjectURL(url);
+            });
+    };
     const resetForm = () => {
         setEditingId(null);
         setForm({ idService: '', nomService: '', description: '', etage: '' });
         setError('');
     };
-
     const handleSelectAll = () => {
         setSelectAll(!selectAll);
         setSelectedIds(selectAll ? [] : services.map(s => s.idService));
     };
     const handleSelectOne = (id) => {
         setSelectedIds(selectedIds.includes(id) ? selectedIds.filter(i => i !== id) : [...selectedIds, id]);
+    };
+
+    const indexOfLast = currentPage * rowsPerPage;
+    const indexOfFirst = indexOfLast - rowsPerPage;
+    const currentServices = services.slice(indexOfFirst, indexOfLast);
+    const totalPages = Math.ceil(services.length / rowsPerPage);
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPages) setCurrentPage(newPage);
     };
 
     return (
@@ -131,14 +170,20 @@ function GererServices() {
                 <input type="text" placeholder={t('rechercher_service')} value={search} onChange={e => setSearch(e.target.value)} />
                 <input type="text" placeholder={t('filtrer_etage')} value={filterEtage} onChange={e => setFilterEtage(e.target.value)} />
                 <button className="btn-secondary" onClick={() => { setSearch(''); setFilterEtage(''); }}>{t('reinitialiser')}</button>
-                <button className="btn-primary" onClick={exportToExcel}>{t('exporter_excel')}</button>
-                <label className="btn-secondary" style={{ cursor: 'pointer' }}>📂 {t('importer_excel')}
-                    <input type="file" accept=".xlsx" onChange={handleFileSelect} style={{ display: 'none' }} />
-                </label>
+                {perms.canExport && <button className="btn-primary" onClick={exportToExcel}>{t('exporter_excel')}</button>}
+                {perms.canManageServices && (
+                    <>
+                        <label className="btn-secondary" style={{ cursor: 'pointer' }}>
+                            📂 {t('importer_excel')}
+                            <input type="file" accept=".xlsx" onChange={handleFileSelect} style={{ display: 'none' }} />
+                        </label>
+                        <button className="btn-secondary" onClick={downloadTemplate}>📥 {t('telecharger_modele')}</button>
+                    </>
+                )}
             </div>
 
-            {showMapping && (
-                <div className="mapping-panel" style={{ marginTop: '1rem', padding: '1rem', border: '1px solid #ccc', background: '#f9f9f9', borderRadius: '1rem' }}>
+            {showMapping && perms.canManageServices && (
+                <div className="mapping-panel">
                     <h4>{t('associer_colonnes')}</h4>
                     <div className="form-grid">
                         <div className="form-field"><label>{t('colonne_id')} *</label><select value={mapping.id} onChange={e => setMapping({ ...mapping, id: e.target.value })}><option value="">-- {t('choisir')} --</option>{headers.map(h => <option key={h}>{h}</option>)}</select></div>
@@ -150,37 +195,71 @@ function GererServices() {
                 </div>
             )}
 
-            <div className="form-card">
-                <h3>{editingId ? t('modifier_service') : t('ajouter_service')}</h3>
-                <form onSubmit={handleSubmit}>
-                    <div className="form-grid">
-                        <div className="form-field"><label>{t('id')} *</label><input type="number" value={form.idService} onChange={e => setForm({ ...form, idService: e.target.value })} required disabled={!!editingId} /></div>
-                        <div className="form-field"><label>{t('nom')} *</label><input value={form.nomService} onChange={e => setForm({ ...form, nomService: e.target.value })} required /></div>
-                        <div className="form-field"><label>{t('description')}</label><input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
-                        <div className="form-field"><label>{t('etage')}</label><input value={form.etage} onChange={e => setForm({ ...form, etage: e.target.value })} /></div>
-                    </div>
-                    <div className="form-actions"><button type="submit" className="btn-primary">{editingId ? t('modifier') : t('ajouter')}</button>{editingId && <button type="button" className="btn-secondary" onClick={resetForm}>{t('annuler')}</button>}</div>
-                </form>
-            </div>
+            {perms.canManageServices && (
+                <div className="form-card">
+                    <h3>{editingId ? t('modifier_service') : t('ajouter_service')}</h3>
+                    <form onSubmit={handleSubmit}>
+                        <div className="form-grid">
+                            <div className="form-field"><label>{t('id')} *</label><input type="number" value={form.idService} onChange={e => setForm({ ...form, idService: e.target.value })} required disabled={!!editingId} /></div>
+                            <div className="form-field"><label>{t('nom')} *</label><input value={form.nomService} onChange={e => setForm({ ...form, nomService: e.target.value })} required /></div>
+                            <div className="form-field"><label>{t('description')}</label><input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
+                            <div className="form-field"><label>{t('etage')}</label><input value={form.etage} onChange={e => setForm({ ...form, etage: e.target.value })} /></div>
+                        </div>
+                        <div className="form-actions"><button type="submit" className="btn-primary">{editingId ? t('modifier') : t('ajouter')}</button>{editingId && <button type="button" className="btn-secondary" onClick={resetForm}>{t('annuler')}</button>}</div>
+                    </form>
+                </div>
+            )}
 
             <div className="data-table-wrapper">
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                    <div className="rows-per-page">
+                        <span>{t('afficher')}</span>
+                        <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
+                            <option value={5}>5</option><option value={10}>10</option><option value={15}>15</option><option value={20}>20</option>
+                        </select>
+                        <span>{t('lignes')}</span>
+                    </div>
+                </div>
                 <table className="modern-table">
-                    <thead><tr><th><input type="checkbox" checked={selectAll} onChange={handleSelectAll} /></th><th>{t('id')}</th><th>{t('nom')}</th><th>{t('description')}</th><th>{t('etage')}</th><th>{t('actions')}</th></tr></thead>
+                    <thead>
+                        <tr>
+                            {perms.canManageServices && <th><input type="checkbox" checked={selectAll} onChange={handleSelectAll} /></th>}
+                            <th>{t('id')}</th>
+                            <th>{t('nom')}</th>
+                            <th>{t('description')}</th>
+                            <th>{t('etage')}</th>
+                            {perms.canManageServices && <th>{t('actions')}</th>}
+                        </tr>
+                    </thead>
                     <tbody>
-                        {services.map(s => (
+                        {currentServices.map(s => (
                             <tr key={s.idService}>
-                                <td><input type="checkbox" checked={selectedIds.includes(s.idService)} onChange={() => handleSelectOne(s.idService)} /></td>
+                                {perms.canManageServices && <td><input type="checkbox" checked={selectedIds.includes(s.idService)} onChange={() => handleSelectOne(s.idService)} /></td>}
                                 <td>{s.idService}</td>
                                 <td>{s.nomService}</td>
                                 <td>{s.description || '—'}</td>
                                 <td>{s.etage || '—'}</td>
-                                <td className="action-icons"><button onClick={() => handleEdit(s)}>✏️</button><button onClick={() => handleDelete(s.idService)}>🗑️</button></td>
-                              </tr>
+                                {perms.canManageServices && (
+                                    <td className="action-icons">
+                                        <button onClick={() => handleEdit(s)}>✏️</button>
+                                        <button onClick={() => handleDelete(s.idService)}>🗑️</button>
+                                    </td>
+                                )}
+                            </tr>
                         ))}
+                        {currentServices.length === 0 && <tr><td colSpan={perms.canManageServices ? 6 : 5} style={{ textAlign: 'center' }}>{t('aucun_service')}</td></tr>}
                     </tbody>
                 </table>
+                {totalPages > 1 && (
+                    <div className="pagination">
+                        <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1}>{t('precedent')}</button>
+                        <span>{t('page')} {currentPage} / {totalPages}</span>
+                        <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages}>{t('suivant')}</button>
+                    </div>
+                )}
             </div>
         </div>
     );
 }
+
 export default GererServices;

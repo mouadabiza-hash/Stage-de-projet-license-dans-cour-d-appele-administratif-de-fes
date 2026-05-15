@@ -24,20 +24,34 @@ function MainLayout({ children }) {
     localStorage.setItem('i18nextLng', lng);
   };
 
-  const menuItems = [
-    { labelKey: 'dashboard', icon: 'grid', path: '/dashboard' },
-    { labelKey: 'menu_courriers', icon: 'mail', path: '/courriers' },
-    { labelKey: 'menu_dossiers_juridiques', icon: 'folder', path: '/courriers-juridiques' },
-    { labelKey: 'menu_archives_juridiques', icon: 'archive', path: '/archives-juridiques' },
-    { labelKey: 'consulter', icon: 'eye', path: '/messages-administratifs' },
-    { labelKey: 'menu_acteurs_judiciaires', icon: 'users', path: '/acteurs-judiciaires' },
-    { labelKey: 'mes_entites', icon: 'building', path: '/mes-entites' },
-    { labelKey: 'registre_transactions', icon: 'send', path: '/transactions-outgoing' },
-    { labelKey: 'notifications', icon: 'bell', path: '/notifications' },
-    { labelKey: 'equipements', icon: 'settings', path: '/equipements' },
-    { labelKey: 'services', icon: 'service', path: '/services' },
-    { labelKey: 'utilisateurs', icon: 'users', path: '/utilisateurs' }
-  ];
+  // All possible menu items with roles
+  const allMenuItems = [
+  { labelKey: 'dashboard', icon: 'grid', path: '/dashboard',
+    roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe'] },
+  { labelKey: 'menu_courriers', icon: 'mail', path: '/courriers',
+    roles: ['Admin','Directeur','Greffier','Enregistrement','Archive'] },
+  { labelKey: 'menu_archives_juridiques', icon: 'archive', path: '/archives-juridiques',
+    roles: ['Admin','Directeur','Archive'] },
+  { labelKey: 'mes_entites', icon: 'building', path: '/mes-entites',
+    roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe'] },
+  { labelKey: 'registre_transactions', icon: 'send', path: '/transactions-outgoing',
+    roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe'] },
+  { labelKey: 'notifications', icon: 'bell', path: '/notifications',
+    roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe'] },
+  { labelKey: 'equipements', icon: 'settings', path: '/equipements',
+    roles: ['Admin','Directeur','Greffier','Archive','Employe'] },
+  { labelKey: 'services', icon: 'service', path: '/services',
+    roles: ['Admin','Directeur'] },
+  { labelKey: 'utilisateurs', icon: 'users', path: '/utilisateurs',
+    roles: ['Admin','Directeur'] },
+  { labelKey: 'my_profile', icon: 'user', path: '/profile', 
+  roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe'] },
+  { labelKey: 'dossier_search', icon: 'search', path: '/dossier-search',
+    roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe'] },
+];
+
+  // Filter by user role
+  const menuItems = allMenuItems.filter(item => item.roles.includes(user?.role));
 
   const displayName = user?.nomComplet || user?.login || t('administrateur');
   const serviceLabel = user?.nomService || 'IT';
