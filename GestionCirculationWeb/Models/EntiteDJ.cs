@@ -15,7 +15,6 @@ namespace GestionCourrier.Models
         public string? IdBureauOrdre { get; set; }
         public int IdService { get; set; }
         public string Direction { get; set; } = "Entrant";
-        // Destinataire is kept on the model for compat but won't be used in UI for judicial
         public string Destinataire { get; set; } = string.Empty;
         public int? ParentId { get; set; }
         public string Sujet { get; set; } = string.Empty;
@@ -26,11 +25,16 @@ namespace GestionCourrier.Models
 
         public int? EntiteAdministratifId { get; set; }
         public Entite? EntiteAdministratif { get; set; }
+
         public bool EstTransmissible { get; set; } = true;
         public string? Cabinet { get; set; }
+        public string? NumeroPremiereInstance { get; set; }     // الرقم الابتدائي
 
-        // ----- NEW FIELD -----
-        public string? NumeroPremiereInstance { get; set; }   // رقم الابتدائي
+        // ----- Linked document -----
+        public bool EstDocumentLie { get; set; } = false;
+        public int? ParentJudiciaireId { get; set; }
+        public EntiteDJ? ParentJudiciaire { get; set; }
+        public ICollection<EntiteDJ> DocumentsLies { get; set; } = new List<EntiteDJ>();
 
         public Service? Service { get; set; }
         public NumeroDossierJuridique? NumeroDossier { get; set; }

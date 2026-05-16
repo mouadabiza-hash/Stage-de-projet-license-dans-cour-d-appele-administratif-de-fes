@@ -20,15 +20,15 @@ namespace GestionCourrier.Models
         public DateTime? DateReponse { get; set; }
         public string? MessageReponse { get; set; }
 
-        public int? AcceptedByUserId { get; set; }          // who accepted
-        public string? AcceptedByUserName { get; set; }    // their name (stored directly for simplicity)
-        public DateTime? AcceptedDate { get; set; }        // when accepted
-        public string? DocumentSujet { get; set; }         // document subject (redundant but handy)
-        [ForeignKey("SourceServiceId")]
-        public Service? SourceService { get; set; }
-        [ForeignKey("DestinationServiceId")]
-        public Service? DestinationService { get; set; }
-        [ForeignKey("DestinationUserId")]
-        public Utilisateur? DestinationUser { get; set; }
+        // Additional fields from earlier enhancements
+        public int? AcceptedByUserId { get; set; }
+        public string? AcceptedByUserName { get; set; }
+        public DateTime? AcceptedDate { get; set; }
+        public string? DocumentSujet { get; set; }
+        public int? SourceUserId { get; set; }
+
+        [ForeignKey("SourceServiceId")] public Service? SourceService { get; set; }
+        [ForeignKey("DestinationServiceId")] public Service? DestinationService { get; set; }
+        [ForeignKey("DestinationUserId")] public Utilisateur? DestinationUser { get; set; }
     }
 }

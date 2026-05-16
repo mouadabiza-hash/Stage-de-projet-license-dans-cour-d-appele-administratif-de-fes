@@ -363,7 +363,13 @@
   "colonne_identifiant": "Colonne Identifiant",
   "identifiant_hint": "numéro de dossier judiciaire, un numéro de courrier",
   "cabinet": "cabinet",
-  "numero_premiere_instance": "N° première instance"
+  "numero_premiere_instance": "N° première instance",
+
+  "voir_reponse": "Voir réponse",
+  "no_reply": "Aucune réponse pour cette correspondance.",
+  "ajouter_reponse": "Ajouter une réponse",
+  "reponse": "Réponse",
+  "reponse_requise": "La réponse est obligatoire."
 
 
 

@@ -31,6 +31,13 @@ namespace GestionCourrier.Models
                 .WithMany(s => s.EntitesDJ)
                 .HasForeignKey(e => e.IdService)
                 .OnDelete(DeleteBehavior.Restrict);
+            
+            // Self-referencing relationship for judicial linked documents
+            modelBuilder.Entity<EntiteDJ>()
+                .HasOne(e => e.ParentJudiciaire)
+                .WithMany(e => e.DocumentsLies)
+                .HasForeignKey(e => e.ParentJudiciaireId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             // Relation Service -> Entite
             modelBuilder.Entity<Entite>()

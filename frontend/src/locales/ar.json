@@ -51,8 +51,8 @@
   "chargement": "جاري التحميل...",
   "erreur_chargement": "خطأ أثناء التحميل",
   "erreur_chargement_donnees": "خطأ أثناء تحميل البيانات",
-  "registre_transactions": "سجل المعاملات",
-  "registre_transactions_acceptees": "سجل المعاملات المقبولة",
+  "registre_transactions": "سجل التداول",
+  "registre_transactions_acceptees": "سجل التداول ",
   "rechercher": "بحث عن وثيقة أو مصلحة أو رقم",
   "exporter_selection": "تصدير العناصر المحددة",
   "selection_requise": "المرجو تحديد معاملة واحدة على الأقل.",
@@ -354,7 +354,16 @@
   "cabinet": "الخزانة",
   "colonne_cabinet": "عمود الخزانة",
   "colonne_emplacement": "عمود الموقع",
-  "numero_premiere_instance": "الرقم الابتدائي"
+  "numero_premiere_instance": "الرقم الابتدائي",
+  "recherche_avancee": "بحث متقدم",
+  "date_debut": "من تاريخ",
+  "date_fin": "إلى تاريخ",
+  "voir_reponse": "عرض الرد",
+  "no_reply": "لا يوجد رد على هذه المراسلة.",
+  "ajouter_reponse": "إضافة رد",
+  "reponse": "الرد",
+  "reponse_requise": "الرد مطلوب."
+
 
 
 

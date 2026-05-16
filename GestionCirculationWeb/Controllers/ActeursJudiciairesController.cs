@@ -23,16 +23,14 @@ namespace GestionCourrier.Controllers
         private async Task<string> GetCurrentUserServiceName()
         {
             var userName = User.Identity?.Name;
-            var user = await _context.Utilisateurs.Include(u => u.Service)
-                .FirstOrDefaultAsync(u => u.Login == userName);
+            var user = await _context.Utilisateurs.Include(u => u.Service).FirstOrDefaultAsync(u => u.Login == userName);
             return user?.Service?.NomService ?? "Inconnu";
         }
 
         // ========== CRUD ==========
-       [HttpGet]
+        [HttpGet]
         public async Task<IActionResult> GetAll()
         {
-            // NO LONGER FILTERS OUT ARCHIVED ITEMS
             var items = await BaseQuery()
                 .OrderByDescending(e => e.DateArchivage)
                 .ThenByDescending(e => e.Id)
@@ -61,7 +59,8 @@ namespace GestionCourrier.Controllers
                         (e.NumeroDossier != null && (e.NumeroDossier.Annee == num || e.NumeroDossier.Nombre == num || e.NumeroDossier.NumeroSujet == num)) ||
                         e.TribunalSource.Contains(keyword) || e.Sujet.Contains(keyword) || e.Destinataire.Contains(keyword) ||
                         e.Description.Contains(keyword) || e.Direction.Contains(keyword) || e.EtatArchive.Contains(keyword) ||
-                        e.Emplacement.Contains(keyword) || (e.Cabinet != null && e.Cabinet.Contains(keyword)));
+                        e.Emplacement.Contains(keyword) || (e.Cabinet != null && e.Cabinet.Contains(keyword)) ||
+                        (e.NumeroPremiereInstance != null && e.NumeroPremiereInstance.Contains(keyword)));
                 }
                 else
                 {
@@ -69,12 +68,11 @@ namespace GestionCourrier.Controllers
                         (e.IdBureauOrdre != null && e.IdBureauOrdre.Contains(keyword)) ||
                         e.TribunalSource.Contains(keyword) || e.Sujet.Contains(keyword) || e.Destinataire.Contains(keyword) ||
                         e.Description.Contains(keyword) || e.Direction.Contains(keyword) || e.EtatArchive.Contains(keyword) ||
-                        e.Emplacement.Contains(keyword) || (e.Cabinet != null && e.Cabinet.Contains(keyword)));
+                        e.Emplacement.Contains(keyword) || (e.Cabinet != null && e.Cabinet.Contains(keyword)) ||
+                        (e.NumeroPremiereInstance != null && e.NumeroPremiereInstance.Contains(keyword)));
                 }
             }
-            var items = await query.OrderByDescending(e => e.DateArchivage)
-                .ThenByDescending(e => e.Id)
-                .ToListAsync();
+            var items = await query.OrderByDescending(e => e.DateArchivage).ThenByDescending(e => e.Id).ToListAsync();
             return Ok(items.Select(ToResponse));
         }
 
@@ -87,10 +85,10 @@ namespace GestionCourrier.Controllers
             var item = new EntiteDJ
             {
                 DateArchivage = request.Date,
-                TribunalSource = request.TribunalSource.Trim(),
-                Sujet = request.Sujet.Trim(),
+                TribunalSource = request.TribunalSource?.Trim() ?? string.Empty,
+                Sujet = request.Sujet?.Trim() ?? string.Empty,
                 Direction = "Entrant",
-                Destinataire = string.Empty,                   // always empty for judicial
+                Destinataire = request.Destinataire?.Trim() ?? string.Empty,
                 Description = request.Description?.Trim() ?? string.Empty,
                 EtatArchive = NormalizeEtat(request.EtatArchive),
                 Emplacement = await GetCurrentUserServiceName(),
@@ -98,9 +96,11 @@ namespace GestionCourrier.Controllers
                 IdBureauOrdre = request.IdBureauOrdre,
                 IdService = request.IdService,
                 EstArchive = false,
-                EstTransmissible = true,
+                EstTransmissible = request.EstTransmissible,
                 Cabinet = request.Cabinet?.Trim(),
-                NumeroPremiereInstance = request.NumeroPremiereInstance?.Trim()   // NEW
+                NumeroPremiereInstance = request.NumeroPremiereInstance?.Trim(),
+                EstDocumentLie = request.EstDocumentLie,
+                ParentJudiciaireId = request.EstDocumentLie ? request.ParentJudiciaireId : null
             };
             ApplyNumeroDossier(item, request);
             _context.EntitesDJs.Add(item);
@@ -114,27 +114,29 @@ namespace GestionCourrier.Controllers
         {
             var item = await _context.EntitesDJs.Include(e => e.NumeroDossier).FirstOrDefaultAsync(e => e.Id == id);
             if (item == null) return NotFound();
-
             var validation = await ValidateRequest(request, id);
             if (validation != null) return validation;
 
             item.DateArchivage = request.Date;
-            item.TribunalSource = request.TribunalSource.Trim();
-            item.Sujet = request.Sujet.Trim();
+            item.TribunalSource = request.TribunalSource?.Trim() ?? string.Empty;
+            item.Sujet = request.Sujet?.Trim() ?? string.Empty;
             item.Direction = "Entrant";
-            item.Destinataire = string.Empty;                  // always empty
+            item.Destinataire = request.Destinataire?.Trim() ?? string.Empty;
             item.Description = request.Description?.Trim() ?? string.Empty;
             item.EtatArchive = NormalizeEtat(request.EtatArchive);
             item.LienPdf = request.LienPdf?.Trim() ?? string.Empty;
             item.IdBureauOrdre = request.IdBureauOrdre;
             item.IdService = request.IdService;
             item.Cabinet = request.Cabinet?.Trim();
-            item.NumeroPremiereInstance = request.NumeroPremiereInstance?.Trim();   // NEW
+            item.NumeroPremiereInstance = request.NumeroPremiereInstance?.Trim();
+            item.EstDocumentLie = request.EstDocumentLie;
+            item.ParentJudiciaireId = request.EstDocumentLie ? request.ParentJudiciaireId : null;
             ApplyNumeroDossier(item, request);
             await _context.SaveChangesAsync();
             var updated = await BaseQuery().FirstAsync(e => e.Id == id);
             return Ok(ToResponse(updated));
         }
+
         [HttpDelete("{id:int}")]
         public async Task<IActionResult> Delete(int id)
         {
@@ -152,7 +154,7 @@ namespace GestionCourrier.Controllers
             if (item == null) return NotFound();
             item.EstArchive = true;
             item.EtatArchive = "Archive";
-            item.Emplacement = "الحفظ";               // ← ALWAYS THE ARCHIVE SERVICE
+            item.Emplacement = "الحفظ";
             await _context.SaveChangesAsync();
             return Ok(ToResponse(item));
         }
@@ -163,8 +165,7 @@ namespace GestionCourrier.Controllers
         {
             var item = await _context.EntitesDJs.FirstOrDefaultAsync(e => e.Id == id);
             if (item == null) return NotFound();
-            if (string.IsNullOrWhiteSpace(request.MotifDeRetrait))
-                return BadRequest("Motif de retrait obligatoire.");
+            if (string.IsNullOrWhiteSpace(request.MotifDeRetrait)) return BadRequest("Motif de retrait obligatoire.");
             var retrait = new Retrait
             {
                 EntiteDJId = id,
@@ -213,9 +214,7 @@ namespace GestionCourrier.Controllers
                     r.Id,
                     documentId = r.EntiteDJ.Id,
                     documentSujet = r.EntiteDJ.Sujet,
-                    numeroDossier = r.EntiteDJ.NumeroDossier != null
-                        ? $"{r.EntiteDJ.NumeroDossier.Annee}/{r.EntiteDJ.NumeroDossier.Nombre}/{r.EntiteDJ.NumeroDossier.NumeroSujet}"
-                        : null,
+                    numeroDossier = r.EntiteDJ.NumeroDossier != null ? $"{r.EntiteDJ.NumeroDossier.Annee}/{r.EntiteDJ.NumeroDossier.Nombre}/{r.EntiteDJ.NumeroDossier.NumeroSujet}" : null,
                     tribunalSource = r.EntiteDJ.TribunalSource,
                     dateRetrait = r.DateDeRetrait,
                     motif = r.MotifDeRetrait,
@@ -226,52 +225,41 @@ namespace GestionCourrier.Controllers
             return Ok(retraitsActifs);
         }
 
-        // ========== EXPORT FOR ARCHIVES ==========
+        // ========== EXPORT (archives) ==========
         [HttpGet("export/archives")]
         public async Task<IActionResult> ExportArchives()
         {
             var archives = await BaseQuery()
                 .Where(e => e.EstArchive || e.EtatArchive == "Archive")
-                .OrderByDescending(e => e.DateArchivage)
-                .ThenByDescending(e => e.Id)
-                .ToListAsync();
+                .OrderByDescending(e => e.DateArchivage).ThenByDescending(e => e.Id).ToListAsync();
 
             using var workbook = new XLWorkbook();
             var ws = workbook.Worksheets.Add("Archives juridiques");
-            var headers = new[] {
-                "رقم الاستئنافي", "التاريخ", "المحكمة / المصدر", "الموضوع",
-                "الموقع", "الخزانة", "الحالة", "عدد السحوبات", "رابط PDF", "الملاحظات"
-            };
-            for (int i = 0; i < headers.Length; i++)
-                ws.Cell(1, i + 1).Value = headers[i];
-
+            var headers = new[] { "رقم الاستئنافي", "الرقم الابتدائي", "التاريخ", "المحكمة / المصدر", "الموضوع", "الموقع", "الخزانة", "الحالة", "عدد السحوبات", "رابط PDF", "الملاحظات" };
+            for (int i = 0; i < headers.Length; i++) ws.Cell(1, i + 1).Value = headers[i];
             int row = 2;
             foreach (var c in archives)
             {
-                ws.Cell(row, 1).Value = c.NumeroDossier != null
-                    ? $"{c.NumeroDossier.Annee}/{c.NumeroDossier.Nombre}/{c.NumeroDossier.NumeroSujet}"
-                    : c.IdBureauOrdre ?? "";
-                ws.Cell(row, 2).Value = c.DateArchivage;
-                ws.Cell(row, 2).Style.DateFormat.Format = "dd/MM/yyyy";
-                ws.Cell(row, 3).Value = c.TribunalSource;
-                ws.Cell(row, 4).Value = c.Sujet;
-                ws.Cell(row, 5).Value = c.Emplacement;
-                ws.Cell(row, 6).Value = c.Cabinet ?? "";
-                ws.Cell(row, 7).Value = ToArabicEtat(c.EtatArchive);
-                ws.Cell(row, 8).Value = c.Retraits.Count;
-                ws.Cell(row, 9).Value = c.LienPdf;
-                ws.Cell(row, 10).Value = c.Description;
+                ws.Cell(row, 1).Value = c.NumeroDossier != null ? $"{c.NumeroDossier.Annee}/{c.NumeroDossier.Nombre}/{c.NumeroDossier.NumeroSujet}" : c.IdBureauOrdre ?? "";
+                ws.Cell(row, 2).Value = c.NumeroPremiereInstance ?? "";
+                ws.Cell(row, 3).Value = c.DateArchivage; ws.Cell(row, 3).Style.DateFormat.Format = "dd/MM/yyyy";
+                ws.Cell(row, 4).Value = c.TribunalSource;
+                ws.Cell(row, 5).Value = c.Sujet;
+                ws.Cell(row, 6).Value = c.Emplacement;
+                ws.Cell(row, 7).Value = c.Cabinet ?? "";
+                ws.Cell(row, 8).Value = ToArabicEtat(c.EtatArchive);
+                ws.Cell(row, 9).Value = c.Retraits.Count;
+                ws.Cell(row, 10).Value = c.LienPdf;
+                ws.Cell(row, 11).Value = c.Description;
                 row++;
             }
             ws.Columns().AdjustToContents();
             using var stream = new MemoryStream();
             workbook.SaveAs(stream);
-            return File(stream.ToArray(),
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                $"archives-juridiques-{DateTime.Now:yyyyMMddHHmm}.xlsx");
+            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"archives-juridiques-{DateTime.Now:yyyyMMddHHmm}.xlsx");
         }
 
-        // ========== IMPORT FOR ARCHIVING EXISTING DOCUMENTS ==========
+        // ========== IMPORT FOR ARCHIVING EXISTING ==========
         [HttpPost("import-archive/preview")]
         public IActionResult ImportArchivePreview(IFormFile file)
         {
@@ -284,15 +272,13 @@ namespace GestionCourrier.Controllers
         }
 
         [HttpPost("import-archive/execute")]
-        public async Task<IActionResult> ImportArchiveExecute(
-            IFormFile file,
+        public async Task<IActionResult> ImportArchiveExecute(IFormFile file,
             [FromQuery] string colIdentifiant,
             [FromQuery] string? colCabinet,
-            [FromQuery] string? colEmplacement)   // accepted but ignored – we force "الحفظ"
+            [FromQuery] string? colEmplacement)
         {
             if (file == null || file.Length == 0) return BadRequest("Fichier requis.");
-            if (string.IsNullOrWhiteSpace(colIdentifiant))
-                return BadRequest("La colonne 'Identifiant' est obligatoire.");
+            if (string.IsNullOrWhiteSpace(colIdentifiant)) return BadRequest("La colonne 'Identifiant' est obligatoire.");
 
             using var stream = file.OpenReadStream();
             using var workbook = new XLWorkbook(stream);
@@ -301,10 +287,9 @@ namespace GestionCourrier.Controllers
 
             int idxId = headers.FindIndex(h => h == colIdentifiant);
             int idxCab = string.IsNullOrWhiteSpace(colCabinet) ? -1 : headers.FindIndex(h => h == colCabinet);
-            // idxEmp is intentionally ignored
+            // idxEmp intentionally ignored – we force "الحفظ"
 
-            if (idxId == -1)
-                return BadRequest("Colonne 'Identifiant' introuvable dans le fichier.");
+            if (idxId == -1) return BadRequest("Colonne 'Identifiant' introuvable dans le fichier.");
 
             var rows = ws.RowsUsed().Skip(1);
             int archived = 0;
@@ -316,59 +301,55 @@ namespace GestionCourrier.Controllers
                 var identifiant = row.Cell(idxId + 1).GetString().Trim();
                 var cabinet = idxCab >= 0 ? row.Cell(idxCab + 1).GetString().Trim() : null;
 
-                if (string.IsNullOrWhiteSpace(identifiant))
-                {
-                    errors.Add($"Ligne {lineNumber}: Identifiant vide.");
-                    lineNumber++;
-                    continue;
-                }
+                if (string.IsNullOrWhiteSpace(identifiant)) { errors.Add($"Ligne {lineNumber}: Identifiant vide."); lineNumber++; continue; }
 
                 // Search in administrative entities (IdBureauOrdre)
-                var entite = await _context.Entites
-                    .FirstOrDefaultAsync(e => e.IdBureauOrdre == identifiant && !e.EstArchive);
-
+                var entite = await _context.Entites.FirstOrDefaultAsync(e => e.IdBureauOrdre == identifiant && !e.EstArchive);
                 if (entite != null)
                 {
-                    entite.EstArchive = true;
-                    entite.Etat = "Archive";
-                    if (!string.IsNullOrWhiteSpace(cabinet))
-                        entite.Description = (string.IsNullOrWhiteSpace(entite.Description) ? "" : entite.Description + " | ") + $"الخزانة: {cabinet}";
-                    await _context.SaveChangesAsync();
-                    archived++;
+                    entite.EstArchive = true; entite.Etat = "Archive";
+                    if (!string.IsNullOrWhiteSpace(cabinet)) entite.Description = (string.IsNullOrWhiteSpace(entite.Description) ? "" : entite.Description + " | ") + $"الخزانة: {cabinet}";
+                    await _context.SaveChangesAsync(); archived++;
                 }
                 else
                 {
-                    // Search in judicial entities (composed NumeroDossier or IdBureauOrdre)
-                    var judicial = await _context.EntitesDJs
-                        .Include(e => e.NumeroDossier)
+                    var judicial = await _context.EntitesDJs.Include(e => e.NumeroDossier)
                         .FirstOrDefaultAsync(e =>
-                            (e.NumeroDossier != null &&
-                             (e.NumeroDossier.Annee.ToString() + "/" + e.NumeroDossier.Nombre.ToString() + "/" + e.NumeroDossier.NumeroSujet.ToString()) == identifiant) ||
+                            (e.NumeroDossier != null && (e.NumeroDossier.Annee.ToString() + "/" + e.NumeroDossier.Nombre.ToString() + "/" + e.NumeroDossier.NumeroSujet.ToString()) == identifiant) ||
                             e.IdBureauOrdre == identifiant);
 
                     if (judicial != null && !judicial.EstArchive)
                     {
-                        judicial.EstArchive = true;
-                        judicial.EtatArchive = "Archive";
-                        judicial.Emplacement = "الحفظ";    // ← FORCE THE ARCHIVE LOCATION
-                        if (!string.IsNullOrWhiteSpace(cabinet))
-                            judicial.Cabinet = cabinet;
-                        await _context.SaveChangesAsync();
-                        archived++;
+                        judicial.EstArchive = true; judicial.EtatArchive = "Archive";
+                        judicial.Emplacement = "الحفظ";
+                        if (!string.IsNullOrWhiteSpace(cabinet)) judicial.Cabinet = cabinet;
+                        await _context.SaveChangesAsync(); archived++;
                     }
                     else if (judicial != null && judicial.EstArchive)
-                    {
                         errors.Add($"Ligne {lineNumber}: Le dossier '{identifiant}' est déjà archivé.");
-                    }
                     else
-                    {
                         errors.Add($"Ligne {lineNumber}: Dossier '{identifiant}' introuvable.");
-                    }
                 }
                 lineNumber++;
             }
 
             return Ok(new { archived, errors });
+        }
+
+        // ========== PARENTS LIST (for linked documents) ==========
+        [HttpGet("parents")]
+        public async Task<IActionResult> GetParents()
+        {
+            var parents = await _context.EntitesDJs
+                .Where(e => !e.EstDocumentLie)   // only main dossiers
+                .Select(e => new {
+                    e.Id,
+                    numeroDossier = e.NumeroDossier != null
+                        ? $"{e.NumeroDossier.Annee}/{e.NumeroDossier.Nombre}/{e.NumeroDossier.NumeroSujet}"
+                        : e.IdBureauOrdre ?? $"ID-{e.Id}"
+                })
+                .ToListAsync();
+            return Ok(parents);
         }
 
         // ========== OTHER ENDPOINTS (upload, search, template) ==========
@@ -393,30 +374,32 @@ namespace GestionCourrier.Controllers
         [HttpGet("search")]
         public async Task<IActionResult> Search([FromQuery] string? motCle)
         {
-        var query = BaseQuery();   // no Where(!e.EstArchive)
-        if (!string.IsNullOrWhiteSpace(motCle))
-        {
-        var keyword = motCle.Trim();
-        if (int.TryParse(keyword, out var num))
-        {
-            query = query.Where(e =>
-                (e.IdBureauOrdre != null && e.IdBureauOrdre.Contains(keyword)) ||
-                (e.NumeroDossier != null && (e.NumeroDossier.Annee == num || e.NumeroDossier.Nombre == num || e.NumeroDossier.NumeroSujet == num)) ||
-                e.TribunalSource.Contains(keyword) || e.Sujet.Contains(keyword) || e.Destinataire.Contains(keyword) ||
-                e.Description.Contains(keyword) || e.Direction.Contains(keyword) || e.EtatArchive.Contains(keyword) ||
-                e.Emplacement.Contains(keyword) || (e.Cabinet != null && e.Cabinet.Contains(keyword)));
-        }
-        else
-        {
-            query = query.Where(e =>
-                (e.IdBureauOrdre != null && e.IdBureauOrdre.Contains(keyword)) ||
-                e.TribunalSource.Contains(keyword) || e.Sujet.Contains(keyword) || e.Destinataire.Contains(keyword) ||
-                e.Description.Contains(keyword) || e.Direction.Contains(keyword) || e.EtatArchive.Contains(keyword) ||
-                e.Emplacement.Contains(keyword) || (e.Cabinet != null && e.Cabinet.Contains(keyword)));
-        }
-        }
-        var items = await query.OrderByDescending(e => e.DateArchivage).ThenByDescending(e => e.Id).ToListAsync();
-        return Ok(items.Select(ToResponse));
+            var query = BaseQuery();   // no filter on EstArchive – returns all
+            if (!string.IsNullOrWhiteSpace(motCle))
+            {
+                var keyword = motCle.Trim();
+                if (int.TryParse(keyword, out var num))
+                {
+                    query = query.Where(e =>
+                        (e.IdBureauOrdre != null && e.IdBureauOrdre.Contains(keyword)) ||
+                        (e.NumeroDossier != null && (e.NumeroDossier.Annee == num || e.NumeroDossier.Nombre == num || e.NumeroDossier.NumeroSujet == num)) ||
+                        e.TribunalSource.Contains(keyword) || e.Sujet.Contains(keyword) || e.Destinataire.Contains(keyword) ||
+                        e.Description.Contains(keyword) || e.Direction.Contains(keyword) || e.EtatArchive.Contains(keyword) ||
+                        e.Emplacement.Contains(keyword) || (e.Cabinet != null && e.Cabinet.Contains(keyword)) ||
+                        (e.NumeroPremiereInstance != null && e.NumeroPremiereInstance.Contains(keyword)));
+                }
+                else
+                {
+                    query = query.Where(e =>
+                        (e.IdBureauOrdre != null && e.IdBureauOrdre.Contains(keyword)) ||
+                        e.TribunalSource.Contains(keyword) || e.Sujet.Contains(keyword) || e.Destinataire.Contains(keyword) ||
+                        e.Description.Contains(keyword) || e.Direction.Contains(keyword) || e.EtatArchive.Contains(keyword) ||
+                        e.Emplacement.Contains(keyword) || (e.Cabinet != null && e.Cabinet.Contains(keyword)) ||
+                        (e.NumeroPremiereInstance != null && e.NumeroPremiereInstance.Contains(keyword)));
+                }
+            }
+            var items = await query.OrderByDescending(e => e.DateArchivage).ThenByDescending(e => e.Id).ToListAsync();
+            return Ok(items.Select(ToResponse));
         }
 
         [HttpGet("template-excel")]
@@ -438,57 +421,44 @@ namespace GestionCourrier.Controllers
         }
 
         // ========== HELPERS ==========
-        private IQueryable<EntiteDJ> BaseQuery() =>
-            _context.EntitesDJs.Include(e => e.Service).Include(e => e.NumeroDossier).Include(e => e.Retraits);
+        private IQueryable<EntiteDJ> BaseQuery() => _context.EntitesDJs.Include(e => e.Service).Include(e => e.NumeroDossier).Include(e => e.Retraits);
 
         private static object ToResponse(EntiteDJ e) => new
         {
-                e.Id,
-                date = e.DateArchivage,
-                tribunalSource = e.TribunalSource,
-                sujet = e.Sujet,
-                direction = e.Direction,
-                // destinataire is REMOVED from response
-                description = e.Description,
-                etatArchive = e.EtatArchive,
-                emplacement = e.Emplacement,
-                lienPdf = e.LienPdf,
-                estTransmissible = e.EstTransmissible,
-                idBureauOrdre = e.IdBureauOrdre,
-                idService = e.IdService,
-                serviceNom = e.Service?.NomService,
-                cabinet = e.Cabinet,
-                numeroPremiereInstance = e.NumeroPremiereInstance,   // NEW
-                numeroDossier = e.NumeroDossier != null
-                    ? $"{e.NumeroDossier.Annee}/{e.NumeroDossier.Nombre}/{e.NumeroDossier.NumeroSujet}"
-                    : null,
-                retraitsCount = e.Retraits.Count,
-                retraits = e.Retraits.OrderByDescending(r => r.DateDeRetrait).Select(r => new
-                {
-                    r.Id, r.DateDeRetrait, r.MotifDeRetrait, r.EffectuePar, r.DateDeRetour, r.Notes
-                })  
+            e.Id,
+            date = e.DateArchivage,
+            tribunalSource = e.TribunalSource,
+            sujet = e.Sujet,
+            direction = e.Direction,
+            destinataire = e.Destinataire,
+            description = e.Description,
+            etatArchive = e.EtatArchive,
+            emplacement = e.Emplacement,
+            lienPdf = e.LienPdf,
+            estTransmissible = e.EstTransmissible,
+            idBureauOrdre = e.IdBureauOrdre,
+            idService = e.IdService,
+            serviceNom = e.Service?.NomService,
+            cabinet = e.Cabinet,
+            numeroPremiereInstance = e.NumeroPremiereInstance,
+            estDocumentLie = e.EstDocumentLie,
+            parentJudiciaireId = e.ParentJudiciaireId,
+            numeroDossier = e.NumeroDossier != null ? $"{e.NumeroDossier.Annee}/{e.NumeroDossier.Nombre}/{e.NumeroDossier.NumeroSujet}" : null,
+            retraitsCount = e.Retraits.Count,
+            retraits = e.Retraits.OrderByDescending(r => r.DateDeRetrait).Select(r => new { r.Id, r.DateDeRetrait, r.MotifDeRetrait, r.EffectuePar, r.DateDeRetour, r.Notes })
         };
 
         private async Task<IActionResult?> ValidateRequest(CourrierJudiciaireRequest request, int? excludeId)
         {
             if (request.Date == default) return BadRequest("Date obligatoire.");
-            if (string.IsNullOrWhiteSpace(request.TribunalSource)) return BadRequest("Tribunal / source obligatoire.");
+            if (string.IsNullOrWhiteSpace(request.TribunalSource) && !request.EstDocumentLie) return BadRequest("Tribunal / source obligatoire.");
             if (string.IsNullOrWhiteSpace(request.Sujet)) return BadRequest("Sujet obligatoire.");
-            if (!string.IsNullOrWhiteSpace(request.IdBureauOrdre) &&
-                !await IsIdBureauOrdreUniqueInJudicial(request.IdBureauOrdre, excludeId))
+            if (!string.IsNullOrWhiteSpace(request.IdBureauOrdre) && !await IsIdBureauOrdreUniqueInJudicial(request.IdBureauOrdre, excludeId))
                 return BadRequest("رقم مكتب الضبط مستخدم بالفعل في ملف قضائي آخر.");
-            if (!string.IsNullOrWhiteSpace(request.NumeroDossier) &&
-                !await IsNumeroDossierUniqueInJudicial(request.NumeroDossier, excludeId))
-                return BadRequest("الرقم الاستئنافي للملف مستخدم بالفعل في ملف قضائي آخر.");
-            if (!string.IsNullOrWhiteSpace(request.IdBureauOrdre) &&
-                await IsIdBureauOrdreTakenByAdministratif(request.IdBureauOrdre, excludeId))
-                return BadRequest("رقم مكتب الضبط مستخدم بالفعل في السجل الإداري.");
-            if (!string.IsNullOrWhiteSpace(request.NumeroDossier) &&
-                await IsIdBureauOrdreTakenByAdministratif(request.NumeroDossier, excludeId))
-                return BadRequest("الرقم الاستئنافي للملف مستخدم بالفعل كرقم مكتب ضبط في السجل الإداري.");
             if (request.IdService <= 0) return BadRequest("Service obligatoire.");
-            if (!await _context.Services.AnyAsync(s => s.IdService == request.IdService))
-                return BadRequest("Service inexistant.");
+            if (!await _context.Services.AnyAsync(s => s.IdService == request.IdService)) return BadRequest("Service inexistant.");
+            if (request.EstDocumentLie && (!request.ParentJudiciaireId.HasValue || request.ParentJudiciaireId.Value <= 0))
+                return BadRequest("Veuillez choisir un dossier parent pour la وثيقة مربوطة.");
             return null;
         }
 
@@ -496,43 +466,12 @@ namespace GestionCourrier.Controllers
         {
             if (string.IsNullOrWhiteSpace(idBureauOrdre)) return true;
             var normalized = idBureauOrdre.Trim();
-            return !await _context.EntitesDJs.AnyAsync(e =>
-                e.IdBureauOrdre != null && e.IdBureauOrdre.Trim() == normalized &&
-                (!excludeId.HasValue || e.Id != excludeId.Value));
-        }
-
-        private async Task<bool> IsNumeroDossierUniqueInJudicial(string? numeroDossier, int? excludeId)
-        {
-            if (string.IsNullOrWhiteSpace(numeroDossier)) return true;
-            if (!TryParseNumeroDossierFlexible(numeroDossier, out var a, out var b, out var c)) return true;
-            return !await _context.EntitesDJs.AnyAsync(e =>
-                e.NumeroDossier != null &&
-                e.NumeroDossier.Annee == a && e.NumeroDossier.Nombre == b && e.NumeroDossier.NumeroSujet == c &&
-                (!excludeId.HasValue || e.Id != excludeId.Value));
-        }
-
-        private async Task<bool> IsIdBureauOrdreTakenByAdministratif(string value, int? excludeId)
-        {
-            if (string.IsNullOrWhiteSpace(value)) return false;
-            var normalized = value.Trim();
-            return await _context.Entites.AnyAsync(e =>
-                e.TypeDocument == "Administratif" && e.ParentId == null &&
-                e.IdBureauOrdre != null && e.IdBureauOrdre.Trim() == normalized &&
-                (!excludeId.HasValue || e.IdEntite != excludeId.Value));
+            return !await _context.EntitesDJs.AnyAsync(e => e.IdBureauOrdre != null && e.IdBureauOrdre.Trim() == normalized && (!excludeId.HasValue || e.Id != excludeId.Value));
         }
 
         private void ApplyNumeroDossier(EntiteDJ item, CourrierJudiciaireRequest request)
         {
             if (TryParseNumeroDossierFlexible(request.NumeroDossier, out var a, out var b, out var c))
-            {
-                if (item.NumeroDossier == null) item.NumeroDossier = new NumeroDossierJuridique();
-                item.NumeroDossier.Annee = a; item.NumeroDossier.Nombre = b; item.NumeroDossier.NumeroSujet = c;
-            }
-        }
-
-        private void ApplyNumeroDossierFlexible(EntiteDJ item, string? numeroDossier)
-        {
-            if (TryParseNumeroDossierFlexible(numeroDossier, out var a, out var b, out var c))
             {
                 if (item.NumeroDossier == null) item.NumeroDossier = new NumeroDossierJuridique();
                 item.NumeroDossier.Annee = a; item.NumeroDossier.Nombre = b; item.NumeroDossier.NumeroSujet = c;
@@ -552,37 +491,35 @@ namespace GestionCourrier.Controllers
             return true;
         }
 
-        private static string NormalizeEtat(string? e) => e switch
-        {
-            "En cours" => "En cours", "Traite" => "Traite", "Archive" => "Archive", _ => "Nouveau"
-        };
-
-        private static string ToArabicEtat(string? e) => e switch
-        {
-            "En cours" => "قيد المعالجة", "Traite" => "تمت المعالجة", "Archive" => "مؤرشف", _ => "جديد"
-        };
+        private static string NormalizeEtat(string? e) => e switch { "En cours" => "En cours", "Traite" => "Traite", "Archive" => "Archive", _ => "Nouveau" };
+        private static string ToArabicEtat(string? e) => e switch { "En cours" => "قيد المعالجة", "Traite" => "تمت المعالجة", "Archive" => "مؤرشف", _ => "جديد" };
     }
 
     // DTOs
     public class CourrierJudiciaireRequest
-{
-    public string? IdBureauOrdre { get; set; }
-    public DateTime Date { get; set; }
-    public string TribunalSource { get; set; } = string.Empty;
-    public string Sujet { get; set; } = string.Empty;
-    public string? Description { get; set; }
-    public string? EtatArchive { get; set; }
-    public string? Emplacement { get; set; }
-    public string? LienPdf { get; set; }
-    public int IdService { get; set; }
-    public bool EstTransmissible { get; set; }
-    public string? NumeroDossier { get; set; }
-    public int? NumeroDossierAnnee { get; set; }
-    public int? NumeroDossierNombre { get; set; }
-    public int? NumeroDossierSujet { get; set; }
-    public string? Cabinet { get; set; }
-    public string? NumeroPremiereInstance { get; set; }   // NEW
-}
+    {
+        public string? IdBureauOrdre { get; set; }
+        public DateTime Date { get; set; }
+        public string? TribunalSource { get; set; }
+        public string? Sujet { get; set; }
+        public string? Direction { get; set; }
+        public string? Destinataire { get; set; }
+        public string? Description { get; set; }
+        public string? EtatArchive { get; set; }
+        public string? Emplacement { get; set; }
+        public string? LienPdf { get; set; }
+        public int IdService { get; set; }
+        public bool EstTransmissible { get; set; }
+        public string? NumeroDossier { get; set; }
+        public int? NumeroDossierAnnee { get; set; }
+        public int? NumeroDossierNombre { get; set; }
+        public int? NumeroDossierSujet { get; set; }
+        public string? Cabinet { get; set; }
+        public string? NumeroPremiereInstance { get; set; }
+        // Linked document
+        public bool EstDocumentLie { get; set; } = false;
+        public int? ParentJudiciaireId { get; set; }
+    }
 
     public class RetraitRequest
     {

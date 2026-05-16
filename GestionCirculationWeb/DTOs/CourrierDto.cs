@@ -19,23 +19,5 @@ namespace GestionCourrier.DTOs
         public int IdService { get; set; } = 1;
         public string? ServiceNom { get; set; }
     }
-    public class CourrierJudiciaireRequest
-{
-    public string? IdBureauOrdre { get; set; }
-    public DateTime Date { get; set; }
-    public string TribunalSource { get; set; } = string.Empty;
-    public string Sujet { get; set; } = string.Empty;
-    public string? Description { get; set; }
-    public string? EtatArchive { get; set; }
-    public string? Emplacement { get; set; }
-    public string? LienPdf { get; set; }
-    public int IdService { get; set; }
-    public bool EstTransmissible { get; set; }
-    public string? NumeroDossier { get; set; }
-    public int? NumeroDossierAnnee { get; set; }
-    public int? NumeroDossierNombre { get; set; }
-    public int? NumeroDossierSujet { get; set; }
-    public string? Cabinet { get; set; }
-    public string? NumeroPremiereInstance { get; set; }   // NEW
-}
+    
 }

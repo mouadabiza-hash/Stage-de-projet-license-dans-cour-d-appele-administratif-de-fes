@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useTranslation } from "react-i18next";
-import GererCourriersJuridiques from "./GererCourriersJuridiques";
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import GenericImportModal from "../components/GenericImportModal";
@@ -12,6 +11,8 @@ const MODE_LIEE = "Liee";
 const MODE_INDEPENDANTE = "Independante";
 const CORRESPONDANCE_SORTANTE = "Sortante";
 const CORRESPONDANCE_ENTRANTE = "Entrante";
+const DOC_TYPE_ADMINISTRATIF = "Administratif";
+const DOC_TYPE_JUDICIAIRE = "Judiciaire";
 
 const ALL_COLUMNS = [
   { key: "idBureauOrdre", label: "numero_bureau_ordre", defaultVisible: true, defaultOrder: 1 },
@@ -34,7 +35,6 @@ function GererCourriers() {
   const perms = usePermissions();
   const userServiceId = user?.idService;
 
-  const [activeRegistre, setActiveRegistre] = useState("administratif");
   const [courriers, setCourriers] = useState([]);
   const [waridat, setWaridat] = useState([]);
   const [services, setServices] = useState([]);
@@ -62,11 +62,28 @@ function GererCourriers() {
 
   function getInitialFormInternal(typeRegistre = TYPE_WARIDAT, typeCorrespondance = CORRESPONDANCE_SORTANTE) {
     return {
-      idBureauOrdre: "", date: "", source: "", sujet: "", destinataire: "", description: "", etat: "Nouveau", lienPdf: "",
+      idBureauOrdre: "",
+      date: "",
+      source: "",
+      sujet: "",
+      destinataire: "",
+      description: "",
+      etat: "Nouveau",
+      lienPdf: "",
       direction: typeRegistre === TYPE_MORASALAT && typeCorrespondance === CORRESPONDANCE_SORTANTE ? "Sortant" : "Entrant",
       idService: userServiceId || "",
-      numeroDeCourrier: "", typeRegistre, morasalatMode: MODE_INDEPENDANTE,
-      parentId: "", parentLocked: false, parentIdBureauOrdre: "", typeCorrespondance, estTransmissible: false,
+      numeroDeCourrier: "",
+      typeRegistre,
+      morasalatMode: MODE_INDEPENDANTE,
+      parentId: "",
+      parentLocked: false,
+      parentIdBureauOrdre: "",
+      typeCorrespondance,
+      estTransmissible: false,
+      waridatDocumentType: DOC_TYPE_ADMINISTRATIF,
+      tribunalSource: "",
+      numeroDossier: "",
+      numeroPremiereInstance: "",
     };
   }
 
@@ -82,17 +99,14 @@ function GererCourriers() {
   const displayedIdBureauOrdre = isLinkedMorasalat
     ? selectedParent?.idBureauOrdre || form.parentIdBureauOrdre || ""
     : form.idBureauOrdre;
+  const isWaridat = form.typeRegistre === TYPE_WARIDAT;
+  const isWaridatJudiciaire = isWaridat && form.waridatDocumentType === DOC_TYPE_JUDICIAIRE;
 
-  // Colonne preferences
+  // Column preferences
   useEffect(() => {
     const saved = localStorage.getItem("courriers_columns_prefs");
     if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setTableColumns(parsed);
-      } catch (e) {
-        setTableColumns(getDefaultColumns());
-      }
+      try { setTableColumns(JSON.parse(saved)); } catch (e) { setTableColumns(getDefaultColumns()); }
     } else {
       setTableColumns(getDefaultColumns());
     }
@@ -103,10 +117,7 @@ function GererCourriers() {
   }, [tableColumns]);
 
   const getDefaultColumns = () => ALL_COLUMNS.map(col => ({
-    key: col.key,
-    label: col.label,
-    visible: col.defaultVisible,
-    order: col.defaultOrder,
+    key: col.key, label: col.label, visible: col.defaultVisible, order: col.defaultOrder,
   })).sort((a,b) => a.order - b.order);
 
   const openColumnModal = () => {
@@ -118,9 +129,7 @@ function GererCourriers() {
 
   const toggleColumnVisibility = (key) => {
     setTempColumns(prev => {
-      const newCols = prev.map(col =>
-        col.key === key ? { ...col, visible: !col.visible } : col
-      );
+      const newCols = prev.map(col => col.key === key ? { ...col, visible: !col.visible } : col);
       const visible = newCols.filter(c => c.visible).map((c, idx) => ({ ...c, order: idx + 1 }));
       const hidden = newCols.filter(c => !c.visible).map((c, idx) => ({ ...c, order: visible.length + idx + 1 }));
       return [...visible, ...hidden];
@@ -140,158 +149,94 @@ function GererCourriers() {
       const targetIndex = direction === 'up' ? visibleIndices[currentPos - 1] : visibleIndices[currentPos + 1];
       [newCols[index], newCols[targetIndex]] = [newCols[targetIndex], newCols[index]];
       let order = 1;
-      for (let i = 0; i < newCols.length; i++) {
-        if (newCols[i].visible) newCols[i].order = order++;
-      }
-      for (let i = 0; i < newCols.length; i++) {
-        if (!newCols[i].visible) newCols[i].order = order++;
-      }
+      for (let i = 0; i < newCols.length; i++) { if (newCols[i].visible) newCols[i].order = order++; }
+      for (let i = 0; i < newCols.length; i++) { if (!newCols[i].visible) newCols[i].order = order++; }
       return newCols;
     });
   };
 
-  const selectAllColumns = () => {
-    setTempColumns(prev => {
-      const newCols = prev.map(col => ({ ...col, visible: true }));
-      let order = 1;
-      for (let i = 0; i < newCols.length; i++) newCols[i].order = order++;
-      return newCols;
-    });
-  };
-
-  const deselectAllColumns = () => {
-    setTempColumns(prev => {
-      const newCols = prev.map(col => ({ ...col, visible: false }));
-      let order = 1;
-      for (let i = 0; i < newCols.length; i++) newCols[i].order = order++;
-      return newCols;
-    });
-  };
-
-  const saveColumnPreferences = () => {
-    setTableColumns(tempColumns);
-    setShowColumnModal(false);
-  };
-
+  const selectAllColumns = () => setTempColumns(prev => { const n = prev.map(c => ({...c, visible: true})); let o=1; n.forEach(c => c.order=o++); return n; });
+  const deselectAllColumns = () => setTempColumns(prev => { const n = prev.map(c => ({...c, visible: false})); let o=1; n.forEach(c => c.order=o++); return n; });
+  const saveColumnPreferences = () => { setTableColumns(tempColumns); setShowColumnModal(false); };
   const visibleColumns = tableColumns.filter(col => col.visible).sort((a,b) => a.order - b.order);
 
-  // Fetching data
-  useEffect(() => {
-    fetchCourriers();
-    fetchWaridat();
-    fetchServices();
-  }, []);
-
-  useEffect(() => {
-    const timeout = setTimeout(runSearch, 250);
-    return () => clearTimeout(timeout);
-  }, [motCle, numeroRecherche, dateRecherche]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [motCle, numeroRecherche, dateRecherche, courriers.length]);
+  useEffect(() => { fetchCourriers(); fetchWaridat(); fetchServices(); }, []);
+  useEffect(() => { const timeout = setTimeout(runSearch, 250); return () => clearTimeout(timeout); }, [motCle, numeroRecherche, dateRecherche]);
+  useEffect(() => { setCurrentPage(1); }, [motCle, numeroRecherche, dateRecherche, courriers.length]);
 
   const fetchCourriers = async () => {
-    try {
-      const res = await axios.get("/api/courriers");
-      setCourriers(res.data);
-      setError("");
-    } catch (err) {
-      setError(getErrorMessage(err, t("erreur_chargement")));
-    }
+    try { const res = await axios.get("/api/courriers"); setCourriers(res.data); setError(""); }
+    catch (err) { setError(getErrorMessage(err, t("erreur_chargement"))); }
   };
-
   const fetchWaridat = async () => {
-    try {
-      const res = await axios.get("/api/courriers/waridat");
-      setWaridat(res.data);
-    } catch (err) {
-      setError(getErrorMessage(err, t("erreur_chargement")));
-    }
+    try { const res = await axios.get("/api/courriers/waridat"); setWaridat(res.data); }
+    catch (err) { setError(getErrorMessage(err, t("erreur_chargement"))); }
   };
-
   const fetchServices = async () => {
-    try {
-      const res = await axios.get("/api/services");
-      setServices(res.data);
-    } catch (err) {
-      setError(getErrorMessage(err, t("erreur_chargement")));
-    }
+    try { const res = await axios.get("/api/services"); setServices(res.data); }
+    catch (err) { setError(getErrorMessage(err, t("erreur_chargement"))); }
   };
 
   const selectWaridat = () => {
-    if (!perms.canCreateAdministratif) return;
+    if (!perms.canCreateAdministratif && !perms.canCreateJuridique) return;
     setEditingId(null);
-    setForm({
-      ...getInitialFormInternal(TYPE_WARIDAT, CORRESPONDANCE_SORTANTE),
-      typeRegistre: TYPE_WARIDAT,
-      morasalatMode: MODE_INDEPENDANTE,
-      typeCorrespondance: CORRESPONDANCE_SORTANTE,
-      direction: "Entrant",
-    });
-    setError("");
-    setSuccess("");
+    setForm({ ...getInitialFormInternal(TYPE_WARIDAT), waridatDocumentType: perms.canCreateAdministratif ? DOC_TYPE_ADMINISTRATIF : DOC_TYPE_JUDICIAIRE });
+    setError(""); setSuccess("");
   };
-
   const selectMorasalat = () => {
     if (!perms.canCreateAdministratif) return;
     setEditingId(null);
-    setForm({
-      ...getInitialFormInternal(TYPE_MORASALAT, CORRESPONDANCE_SORTANTE),
-      typeRegistre: TYPE_MORASALAT,
-      morasalatMode: MODE_INDEPENDANTE,
-      typeCorrespondance: CORRESPONDANCE_SORTANTE,
-      direction: "Sortant",
-    });
-    setError("");
-    setSuccess("");
+    setForm({ ...getInitialFormInternal(TYPE_MORASALAT, CORRESPONDANCE_SORTANTE), direction: "Sortant" });
+    setError(""); setSuccess("");
   };
-
-  const selectCorrespondance = (typeCorrespondance) => {
-    setForm((prev) => ({
-      ...prev,
-      typeRegistre: TYPE_MORASALAT,
-      morasalatMode: prev.parentLocked ? MODE_LIEE : MODE_INDEPENDANTE,
-      parentId: prev.parentLocked ? prev.parentId : "",
-      parentIdBureauOrdre: prev.parentLocked ? prev.parentIdBureauOrdre : "",
-      typeCorrespondance,
-      direction: typeCorrespondance === CORRESPONDANCE_SORTANTE ? "Sortant" : "Interne",
-    }));
+  const selectCorrespondance = (type) => {
+    setForm(prev => ({ ...prev, typeCorrespondance: type, direction: type === CORRESPONDANCE_SORTANTE ? "Sortant" : "Interne" }));
   };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setForm((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : name === "idService" ? Number(value) : value,
-    }));
+    setForm(prev => ({ ...prev, [name]: type === "checkbox" ? checked : name === "idService" ? Number(value) : value }));
   };
 
   const resetForm = () => {
     setEditingId(null);
     setForm(getInitialFormInternal(form.typeRegistre, form.typeCorrespondance));
-    setError("");
-    setSuccess("");
+    setError(""); setSuccess("");
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!perms.canCreateAdministratif) return;
-    setError("");
-    setSuccess("");
+    if ((isWaridatJudiciaire && !perms.canCreateJuridique) || (!isWaridatJudiciaire && !perms.canCreateAdministratif)) return;
+    setError(""); setSuccess("");
     try {
-      await saveCurrentCourrier();
+      if (isWaridatJudiciaire) {
+        const payload = {
+          idBureauOrdre: form.idBureauOrdre?.trim() || null,
+          date: new Date(form.date).toISOString(),
+          tribunalSource: form.tribunalSource.trim(),
+          sujet: form.sujet.trim(),
+          direction: "Entrant",
+          description: form.description?.trim() || "",
+          etatArchive: form.etat,
+          lienPdf: form.lienPdf?.trim() || "",
+          idService: Number(form.idService),
+          numeroDossier: form.numeroDossier?.trim() || null,
+          estTransmissible: Boolean(form.estTransmissible),
+          numeroPremiereInstance: form.numeroPremiereInstance?.trim() || null,
+        };
+        if (editingId) await axios.put(`/api/acteursjudiciaires/${editingId}`, payload);
+        else await axios.post("/api/acteursjudiciaires", payload);
+      } else {
+        await saveCurrentCourrier();
+      }
       setSuccess(editingId ? t("modification_succes") : t("ajout_succes"));
       resetForm();
       await fetchCourriers();
       await fetchWaridat();
-    } catch (err) {
-      setError(getErrorMessage(err, t("erreur_enregistrement")));
-    }
+    } catch (err) { setError(getErrorMessage(err, t("erreur_enregistrement"))); }
   };
 
   const saveCurrentCourrier = async () => {
-    if (!perms.canCreateAdministratif) throw new Error("Permission denied");
     const validationError = validateForm(form, isLinkedMorasalat);
     if (validationError) throw new Error(validationError);
     const dataToSend = {
@@ -316,27 +261,26 @@ function GererCourriers() {
   };
 
   const handleSaveWaridatAndAddMorasalat = async () => {
-    if (!perms.canCreateAdministratif || savingLinked) return;
-    setError("");
-    setSuccess("");
+    if (!perms.canCreateAdministratif || savingLinked || isWaridatJudiciaire) return;
+    setError(""); setSuccess("");
     if (form.typeRegistre !== TYPE_WARIDAT) return;
     try {
       setSavingLinked(true);
       const existingWarida = !editingId ? findMainWaridatByNumero(courriers, form.idBureauOrdre) : null;
       const savedWarida = existingWarida || (await saveCurrentCourrier());
-      await fetchCourriers();
-      await fetchWaridat();
+      await fetchCourriers(); await fetchWaridat();
       handleAddMorasalat(savedWarida);
       setSuccess(existingWarida ? t("warida_existante_liee") : t("warida_cree_liee"));
-    } catch (err) {
-      setError(getErrorMessage(err, t("erreur_enregistrement")));
-    } finally {
-      setSavingLinked(false);
-    }
+    } catch (err) { setError(getErrorMessage(err, t("erreur_enregistrement"))); }
+    finally { setSavingLinked(false); }
   };
 
   const handleEdit = (courrier) => {
-    if (!perms.canCreateAdministratif) return;
+    if (!perms.canCreateAdministratif && !perms.canCreateJuridique) return;
+    if (courrier.typeDocument === DOC_TYPE_JUDICIAIRE) {
+      alert(t("edit_judicial_in_judicial_page") || "Modifiez les dossiers judiciaires depuis la page dédiée.");
+      return;
+    }
     const typeRegistre = courrier.typeRegistre || (courrier.parentId ? TYPE_MORASALAT : TYPE_WARIDAT);
     const typeCorrespondance = courrier.typeCorrespondance || CORRESPONDANCE_SORTANTE;
     const morasalatMode = typeRegistre === TYPE_MORASALAT && courrier.parentId ? MODE_LIEE : MODE_INDEPENDANTE;
@@ -353,13 +297,14 @@ function GererCourriers() {
       direction: courrier.direction || "Entrant",
       idService: courrier.idService || userServiceId,
       numeroDeCourrier: courrier.numeroDeCourrier || "",
-      typeRegistre,
-      morasalatMode,
+      typeRegistre, morasalatMode,
       parentId: courrier.parentId || "",
       parentLocked: Boolean(courrier.parentId),
       parentIdBureauOrdre: courrier.parentId ? courrier.idBureauOrdre || "" : "",
       typeCorrespondance,
       estTransmissible: Boolean(courrier.estTransmissible),
+      waridatDocumentType: DOC_TYPE_ADMINISTRATIF,
+      tribunalSource: "", numeroDossier: "", numeroPremiereInstance: "",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -367,20 +312,13 @@ function GererCourriers() {
   const handleAddMorasalat = (warida) => {
     if (!perms.canCreateAdministratif) return;
     const parentId = warida.id || warida.idEntite;
-    if (!parentId) {
-      setError(t("parent_introuvable"));
-      return;
-    }
+    if (!parentId) { setError(t("parent_introuvable")); return; }
     setEditingId(null);
     setForm({
       ...getInitialFormInternal(TYPE_MORASALAT, CORRESPONDANCE_SORTANTE),
-      idBureauOrdre: "",
-      parentId,
-      parentLocked: true,
+      idBureauOrdre: "", parentId, parentLocked: true,
       parentIdBureauOrdre: warida.idBureauOrdre || "",
       morasalatMode: MODE_LIEE,
-      typeRegistre: TYPE_MORASALAT,
-      typeCorrespondance: CORRESPONDANCE_SORTANTE,
       direction: "Sortant",
       idService: warida.idService || userServiceId,
     });
@@ -393,110 +331,72 @@ function GererCourriers() {
     try {
       await axios.delete(`/api/courriers/${id}`);
       setSuccess(t("suppression_succes"));
-      await fetchCourriers();
-      await fetchWaridat();
-    } catch (err) {
-      setError(getErrorMessage(err, t("erreur_suppression")));
-    }
+      await fetchCourriers(); await fetchWaridat();
+    } catch (err) { setError(getErrorMessage(err, t("erreur_suppression"))); }
   };
 
   const runSearch = async () => {
     try {
-      if (!motCle.trim() && !numeroRecherche.trim() && !dateRecherche) {
-        await fetchCourriers();
-        return;
-      }
+      if (!motCle.trim() && !numeroRecherche.trim() && !dateRecherche) { await fetchCourriers(); return; }
       const params = new URLSearchParams();
       if (motCle.trim()) params.append("motCle", motCle.trim());
       if (numeroRecherche.trim()) params.append("numeroBureauOrdre", numeroRecherche.trim());
       if (dateRecherche) params.append("date", dateRecherche);
       const res = await axios.get(`/api/courriers/search?${params.toString()}`);
       setCourriers(res.data);
-    } catch (err) {
-      setError(getErrorMessage(err, t("erreur_recherche")));
-    }
+    } catch (err) { setError(getErrorMessage(err, t("erreur_recherche"))); }
   };
 
   const exportToExcel = () => {
     if (!perms.canExport) return;
     fetch("/api/courriers/export/excel", { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } })
-      .then(res => {
-        if (!res.ok) throw new Error();
-        return res.blob();
-      })
-      .then(blob => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "courriers-administratifs.xlsx";
-        a.click();
-        URL.revokeObjectURL(url);
-      })
+      .then(res => { if (!res.ok) throw new Error(); return res.blob(); })
+      .then(blob => { const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "courriers-administratifs.xlsx"; a.click(); URL.revokeObjectURL(url); })
       .catch(() => setError(t("erreur_export")));
   };
 
   const handleDocumentSelect = async (e) => {
-    if (!perms.canCreateAdministratif) return;
+    if (!perms.canCreateAdministratif && !perms.canCreateJuridique) return;
     const file = e.target.files[0];
     if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file);
+    const formData = new FormData(); formData.append("file", file);
     setUploadingDocument(true);
     try {
       const res = await axios.post("/api/courriers/upload-document", formData);
       setForm(prev => ({ ...prev, lienPdf: res.data.lienPdf }));
       setSuccess(t("document_uploaded"));
-    } catch (err) {
-      setError(getErrorMessage(err, t("erreur_upload")));
-    } finally {
-      setUploadingDocument(false);
-      e.target.value = "";
-    }
+    } catch (err) { setError(getErrorMessage(err, t("erreur_upload"))); }
+    finally { setUploadingDocument(false); e.target.value = ""; }
   };
 
   const downloadTemplate = async () => {
     try {
       const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5127';
-      const templateUrl = "/api/courriers/template-excel";
-      const response = await fetch(`${baseUrl}${templateUrl}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const res = await fetch(`${baseUrl}/api/courriers/template-excel`, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob); const a = document.createElement('a');
       a.href = url;
-      const contentDisposition = response.headers.get('Content-Disposition');
+      const cd = res.headers.get('Content-Disposition');
       let filename = 'modele_import.xlsx';
-      if (contentDisposition && contentDisposition.includes('filename=')) {
-        const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (cd && cd.includes('filename=')) {
+        const match = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
         if (match && match[1]) filename = match[1].replace(/['"]/g, '');
       }
-      a.download = filename;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      setError(t('erreur_telechargement_modele') || 'Erreur lors du téléchargement du modèle');
-    }
+      a.download = filename; a.click(); window.URL.revokeObjectURL(url);
+    } catch (err) { setError(t('erreur_telechargement_modele') || 'Erreur lors du téléchargement du modèle'); }
   };
 
-  // Pagination
   const indexOfLastRow = currentPage * rowsPerPage;
   const indexOfFirstRow = indexOfLastRow - rowsPerPage;
   const currentCourriers = courriers.slice(indexOfFirstRow, indexOfLastRow);
   const totalPages = Math.ceil(courriers.length / rowsPerPage);
-  const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= totalPages) setCurrentPage(newPage);
-  };
+  const handlePageChange = (newPage) => { if (newPage >= 1 && newPage <= totalPages) setCurrentPage(newPage); };
 
   const renderCourriersTable = () => (
     <div className="data-table-wrapper search-results-table">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
-        <h3 style={{ margin: 0 }}>
-          {hasActiveSearch
-            ? `${t("resultats_recherche")} (${courriers.length})`
-            : `${t("registre")} (${courriers.length})`}
-        </h3>
+        <h3 style={{ margin: 0 }}>{hasActiveSearch ? `${t("resultats_recherche")} (${courriers.length})` : `${t("registre")} (${courriers.length})`}</h3>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <div className="rows-per-page">
             <span>{t("afficher")}</span>
@@ -505,16 +405,12 @@ function GererCourriers() {
             </select>
             <span>{t("lignes")}</span>
           </div>
-          <button className="btn-secondary" onClick={openColumnModal} style={{ fontSize: '0.8rem' }}>
-            ⚙️ {t("customiser_colonnes")}
-          </button>
+          <button className="btn-secondary" onClick={openColumnModal} style={{ fontSize: '0.8rem' }}>⚙️ {t("customiser_colonnes")}</button>
         </div>
       </div>
       <table className="modern-table">
         <thead>
-          <tr>
-            {visibleColumns.map(col => <th key={col.key}>{t(col.label)}</th>)}
-          </tr>
+          <tr>{visibleColumns.map(col => <th key={col.key}>{t(col.label)}</th>)}</tr>
         </thead>
         <tbody>
           {currentCourriers.length === 0 ? (
@@ -526,15 +422,9 @@ function GererCourriers() {
                   if (col.key === "actions") {
                     return (
                       <td className="action-icons" key="actions">
-                        {perms.canCreateAdministratif && isMainWaridat(courrier) && (
-                          <button onClick={() => handleAddMorasalat(courrier)}>{t("ajouter_morasala")}</button>
-                        )}
-                        {perms.canCreateAdministratif && (
-                          <button onClick={() => handleEdit(courrier)}>{t("modifier")}</button>
-                        )}
-                        {perms.canDelete && (
-                          <button onClick={() => handleDelete(courrier.id)}>{t("supprimer")}</button>
-                        )}
+                        {perms.canCreateAdministratif && isMainWaridat(courrier) && <button onClick={() => handleAddMorasalat(courrier)}>{t("ajouter_morasala")}</button>}
+                        {(perms.canCreateAdministratif || perms.canCreateJuridique) && courrier.typeDocument !== DOC_TYPE_JUDICIAIRE && <button onClick={() => handleEdit(courrier)}>{t("modifier")}</button>}
+                        {perms.canDelete && <button onClick={() => handleDelete(courrier.id)}>{t("supprimer")}</button>}
                         {!perms.canCreateAdministratif && !perms.canDelete && <span>-</span>}
                       </td>
                     );
@@ -571,66 +461,96 @@ function GererCourriers() {
     </div>
   );
 
-  if (activeRegistre === "juridique") {
-    return (
-      <div className="page-container" dir="rtl">
-        <h1 className="page-title">{t("menu_courriers")}</h1>
-        <div className="registry-choice">
-            <button className="choice-pill" onClick={() => setActiveRegistre("administratif")}>{t("administratif")}</button>
-          <button className="choice-pill active" onClick={() => setActiveRegistre("juridique")}>{t("judiciaire")}</button>
-        </div>
-        <GererCourriersJuridiques embedded perms={perms} />
-      </div>
-    );
-  }
-
   return (
     <div className="page-container" dir="rtl">
       <h1 className="page-title">{t("menu_courriers")}</h1>
-      <div className="registry-choice">
-
-        <button className="choice-pill active" onClick={() => setActiveRegistre("administratif")}>{t("administratif")}</button>
-        <button className="choice-pill" onClick={() => setActiveRegistre("juridique")}>{t("judiciaire")}</button>
-      </div>
       <h2 className="page-title">{t("administratif")}</h2>
       {error && <div className="error-message">{error}</div>}
       {success && <div className="success-message">{success}</div>}
 
-      {perms.canCreateAdministratif && (
+      {(perms.canCreateAdministratif || perms.canCreateJuridique) && (
         <>
           <div className="registry-choice">
-            <button className={form.typeRegistre === TYPE_WARIDAT ? "choice-pill active" : "choice-pill"} onClick={selectWaridat}>{t("waridat")}</button>
-            <button className={form.typeRegistre === TYPE_MORASALAT ? "choice-pill active" : "choice-pill"} onClick={selectMorasalat}>{t("morasalat")}</button>
+            <button className={isWaridat ? "choice-pill active" : "choice-pill"} onClick={selectWaridat}>{t("waridat")}</button>
+            <button className={isMorasalat ? "choice-pill active" : "choice-pill"} onClick={selectMorasalat}>{t("morasalat")}</button>
           </div>
+
+          {isWaridat && (
+            <div className="registry-choice sub-choice">
+              <button
+                className={form.waridatDocumentType === DOC_TYPE_ADMINISTRATIF ? "choice-pill active" : "choice-pill"}
+                onClick={() => setForm({ ...form, waridatDocumentType: DOC_TYPE_ADMINISTRATIF })}
+              >{t("administratif")}</button>
+              {perms.canCreateJuridique && (
+                <button
+                  className={form.waridatDocumentType === DOC_TYPE_JUDICIAIRE ? "choice-pill active" : "choice-pill"}
+                  onClick={() => setForm({ ...form, waridatDocumentType: DOC_TYPE_JUDICIAIRE })}
+                >{t("judiciaire")}</button>
+              )}
+            </div>
+          )}
+
           {isMorasalat && (
             <div className="registry-choice sub-choice">
               <button className={form.typeCorrespondance === CORRESPONDANCE_SORTANTE ? "choice-pill active" : "choice-pill"} onClick={() => selectCorrespondance(CORRESPONDANCE_SORTANTE)}>{t("sortante")}</button>
               <button className={form.typeCorrespondance === CORRESPONDANCE_ENTRANTE ? "choice-pill active" : "choice-pill"} onClick={() => selectCorrespondance(CORRESPONDANCE_ENTRANTE)}>{t("entrante")}</button>
             </div>
           )}
+
           <div className="form-card">
-            <h3>{editingId ? t("modifier") : t("ajouter")} {formatFormTitle(form)}</h3>
+            <h3>{editingId ? t("modifier") : t("ajouter")} {isWaridatJudiciaire ? t("judiciaire") : formatFormTitle(form)}</h3>
             <form onSubmit={handleSubmit}>
               <div className="form-grid">
-                {showIdBureauOrdreInput ? (
+                {isWaridat && !isWaridatJudiciaire && (
                   <div className="form-field"><label>{t("numero_bureau_ordre")} *</label><input type="text" name="idBureauOrdre" value={form.idBureauOrdre} onChange={handleChange} required /></div>
-                ) : (
-                  <div className="form-field"><label>{t("numero_bureau_ordre")}</label><input type="text" value={displayedIdBureauOrdre || t("auto_parent")} readOnly /></div>
+                )}
+                {isWaridatJudiciaire && (
+                  <div className="form-field"><label>{t("numero_bureau_ordre")}</label><input type="text" name="idBureauOrdre" value={form.idBureauOrdre} onChange={handleChange} /></div>
+                )}
+                {isMorasalat && (
+                  showIdBureauOrdreInput ? (
+                    <div className="form-field"><label>{t("numero_bureau_ordre")} *</label><input type="text" name="idBureauOrdre" value={form.idBureauOrdre} onChange={handleChange} required /></div>
+                  ) : (
+                    <div className="form-field"><label>{t("numero_bureau_ordre")}</label><input type="text" value={displayedIdBureauOrdre || t("auto_parent")} readOnly /></div>
+                  )
                 )}
                 <div className="form-field"><label>{t("date")} *</label><input type="date" name="date" value={form.date} onChange={handleChange} required /></div>
-                <div className="form-field"><label>{isMorasalat && form.typeCorrespondance === CORRESPONDANCE_SORTANTE ? t("emetteur") : t("source")} *</label><input type="text" name="source" value={form.source} onChange={handleChange} required /></div>
-                <div className="form-field"><label>{isMorasalat && form.typeCorrespondance === CORRESPONDANCE_ENTRANTE ? t("reponse_sujet") : t("objet")} *</label><input type="text" name="sujet" value={form.sujet} onChange={handleChange} required /></div>
-                <div className="form-field"><label>{t("destinataire")}</label><input type="text" name="destinataire" value={form.destinataire} onChange={handleChange} /></div>
+                {isWaridatJudiciaire ? (
+                  <div className="form-field"><label>{t("tribunal_source")} *</label><input name="tribunalSource" value={form.tribunalSource} onChange={handleChange} required /></div>
+                ) : (
+                  <div className="form-field">
+                    <label>{isMorasalat && form.typeCorrespondance === CORRESPONDANCE_SORTANTE ? t("emetteur") : t("source")} *</label>
+                    <input type="text" name="source" value={form.source} onChange={handleChange} required />
+                  </div>
+                )}
+                <div className="form-field">
+                  <label>{isMorasalat && form.typeCorrespondance === CORRESPONDANCE_ENTRANTE ? t("reponse_sujet") : t("objet")} *</label>
+                  <input type="text" name="sujet" value={form.sujet} onChange={handleChange} required />
+                </div>
+                {!isWaridatJudiciaire && (
+                  <div className="form-field"><label>{t("destinataire")}</label><input type="text" name="destinataire" value={form.destinataire} onChange={handleChange} /></div>
+                )}
+                {isWaridatJudiciaire && (
+                  <>
+                    <div className="form-field"><label>{t("numero_dossier") || "الرقم الاستئنافي"}</label><input name="numeroDossier" value={form.numeroDossier} onChange={handleChange} placeholder="2026/15/3" /></div>
+                    <div className="form-field"><label>{t("numero_premiere_instance") || "الرقم الابتدائي"}</label><input name="numeroPremiereInstance" value={form.numeroPremiereInstance} onChange={handleChange} placeholder="2026/12" /></div>
+                  </>
+                )}
                 <div className="form-field">
                   <label>{t("service")} *</label>
                   <input type="text" value={services.find(s => s.idService === form.idService)?.nomService || ''} disabled />
                   <input type="hidden" name="idService" value={form.idService} />
                 </div>
-                <div className="form-field"><label>{t("etat")}</label><select name="etat" value={form.etat} onChange={handleChange}>
-                  <option value="Nouveau">{t("nouveau")}</option><option value="En cours">{t("en_cours")}</option>
-                  <option value="Traite">{t("traite")}</option><option value="Archive">{t("archive")}</option>
-                </select></div>
-                <div className="form-field"><label>{t("numero_interne")}</label><input type="text" name="numeroDeCourrier" value={form.numeroDeCourrier} onChange={handleChange} /></div>
+                <div className="form-field">
+                  <label>{t("etat")}</label>
+                  <select name="etat" value={form.etat} onChange={handleChange}>
+                    <option value="Nouveau">{t("nouveau")}</option><option value="En cours">{t("en_cours")}</option>
+                    <option value="Traite">{t("traite")}</option><option value="Archive">{t("archive")}</option>
+                  </select>
+                </div>
+                {!isWaridatJudiciaire && (
+                  <div className="form-field"><label>{t("numero_interne")}</label><input type="text" name="numeroDeCourrier" value={form.numeroDeCourrier} onChange={handleChange} /></div>
+                )}
                 <div className="form-field full-width">
                   <label>{t("document_pdf_word")}</label>
                   <div className="document-control">
@@ -644,7 +564,7 @@ function GererCourriers() {
               </div>
               <div className="form-actions">
                 <button type="submit" className="btn-primary">{editingId ? t("modifier") : t("ajouter")}</button>
-                {form.typeRegistre === TYPE_WARIDAT && <button type="button" className="btn-secondary" onClick={handleSaveWaridatAndAddMorasalat} disabled={savingLinked}>{savingLinked ? t("saving") : t("ajouter_morasala_liee")}</button>}
+                {isWaridat && !isWaridatJudiciaire && <button type="button" className="btn-secondary" onClick={handleSaveWaridatAndAddMorasalat} disabled={savingLinked}>{savingLinked ? t("saving") : t("ajouter_morasala_liee")}</button>}
                 {editingId && <button type="button" className="btn-secondary" onClick={resetForm}>{t("annuler")}</button>}
               </div>
             </form>
@@ -657,8 +577,8 @@ function GererCourriers() {
           <h3>{t("recherche_registre")}</h3>
           <div className="registry-tools">
             {perms.canExport && <button className="btn-primary" onClick={exportToExcel}>{t("exporter_excel")}</button>}
-            {perms.canCreateAdministratif && <button className="btn-secondary" onClick={() => setShowImportModal(true)}>📂 {t("importer_excel")}</button>}
-            {perms.canCreateAdministratif && <button className="btn-secondary" onClick={downloadTemplate}>📥 {t("telecharger_modele")}</button>}
+            {(perms.canCreateAdministratif || perms.canCreateJuridique) && <button className="btn-secondary" onClick={() => setShowImportModal(true)}>📂 {t("importer_excel")}</button>}
+            {(perms.canCreateAdministratif || perms.canCreateJuridique) && <button className="btn-secondary" onClick={downloadTemplate}>📥 {t("telecharger_modele")}</button>}
           </div>
         </div>
         <div className="filters">
@@ -670,7 +590,7 @@ function GererCourriers() {
         {renderCourriersTable()}
       </div>
 
-      {perms.canCreateAdministratif && (
+      {(perms.canCreateAdministratif || perms.canCreateJuridique) && (
         <GenericImportModal
           isOpen={showImportModal}
           onClose={() => setShowImportModal(false)}
@@ -681,7 +601,6 @@ function GererCourriers() {
         />
       )}
 
-      {/* Column customisation modal */}
       {showColumnModal && (
         <div className="modal-overlay" onClick={() => setShowColumnModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -717,7 +636,7 @@ function GererCourriers() {
   );
 }
 
-// Helper functions (unchanged)
+// Helper functions
 function validateForm(form, isLinkedMorasalat) {
   if (!isLinkedMorasalat && !form.idBureauOrdre.trim()) return "رقم مكتب الضبط إجباري للسطر الرئيسي";
   if (isLinkedMorasalat && !form.parentId) return "المرجو اختيار الواردة المرتبطة";

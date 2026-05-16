@@ -673,3 +673,97 @@ html[dir="ltr"] .section-title { border-right: none; border-left: 4px solid var(
   .pagination button { min-width: 60px; padding: 0.4rem 0.7rem; font-size: 0.75rem; }
   .pagination span { font-size: 0.75rem; padding: 0.3rem 0.7rem; }
 }
+/* type badge for registre */
+.type-badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.type-badge.administratif { background: #e0f2fe; color: #0369a1; }
+.type-badge.judiciaire    { background: #fef3c7; color: #b45309; }
+.type-badge.sortante      { background: #fce7f3; color: #be185d; }
+
+/* action icons emoji style */
+.action-icons button {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+}
+.btn-view-reply {
+  color: var(--gold) !important;
+  font-weight: 800;
+  border-color: var(--gold) !important;
+}
+.btn-view-reply {
+  color: var(--gold) !important;
+  font-weight: 800;
+  border: 1px solid var(--gold) !important;
+  background: #fff !important;
+}
+.btn-view-reply:hover {
+  background: var(--gold) !important;
+  color: #fff !important;
+}
+.btn-view-reply {
+  color: var(--gold) !important;
+  font-weight: 800;
+  border: 1px solid var(--gold) !important;
+  background: #fff !important;
+  padding: 0.35rem 0.8rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-view-reply:hover {
+  background: var(--gold) !important;
+  color: #fff !important;
+}
+/* linked document badge */
+.type-badge.linked-doc {
+  background: #e9d5ff;
+  color: #6b21a8;
+  font-weight: 700;
+}
+/* linked document badge */
+.type-badge.linked-doc {
+  background: #e9d5ff;
+  color: #6b21a8;
+  font-weight: 700;
+}
+
+/* reply view button */
+.btn-view-reply {
+  color: var(--gold) !important;
+  font-weight: 800;
+  border: 1px solid var(--gold) !important;
+  background: #fff !important;
+  padding: 0.35rem 0.8rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-view-reply:hover {
+  background: var(--gold) !important;
+  color: #fff !important;
+}
+.btn-view-reply {
+  color: var(--gold) !important;
+  font-weight: 800;
+  border: 1px solid var(--gold) !important;
+  background: #fff !important;
+  padding: 0.35rem 0.8rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-view-reply:hover {
+  background: var(--gold) !important;
+  color: #fff !important;
+}
+.type-badge.linked-doc {
+  background: #e9d5ff;
+  color: #6b21a8;
+}

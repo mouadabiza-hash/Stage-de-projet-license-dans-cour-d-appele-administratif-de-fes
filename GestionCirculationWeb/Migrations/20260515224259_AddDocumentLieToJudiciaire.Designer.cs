@@ -4,6 +4,7 @@ using GestionCourrier.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GestionCirculationWeb.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260515224259_AddDocumentLieToJudiciaire")]
+    partial class AddDocumentLieToJudiciaire
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -431,9 +434,6 @@ namespace GestionCirculationWeb.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("SourceServiceId")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("SourceUserId")
                         .HasColumnType("int");
 
                     b.Property<string>("Statut")

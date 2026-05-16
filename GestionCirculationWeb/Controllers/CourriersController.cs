@@ -26,18 +26,15 @@ namespace GestionCourrier.Controllers
             _environment = environment;
         }
 
-        // ========== LISTE UNIFIÉE (administratif + judiciaire) ==========
-        [HttpGet]
-        public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? date, string? type)
-        {
-            var query = GetUnifiedQuery().Where(e => e.ParentId == null);
-            query = ApplyStructuredFilters(query, numeroBureauOrdre, date, type);
-            var courriers = await query
-                .OrderByDescending(e => e.DateCreation)
-                .ThenByDescending(e => e.Id)
-                .ToListAsync();
-            return Ok(courriers.Select(ToUnifiedResponse));
-        }
+        // ========== UNIFIED LIST ==========
+[HttpGet]
+public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? date, string? type)
+{
+    var query = GetUnifiedQuery();   // NO .Where(e => e.ParentId == null)
+    query = ApplyStructuredFilters(query, numeroBureauOrdre, date, type);
+    var courriers = await query.OrderByDescending(e => e.DateCreation).ThenByDescending(e => e.Id).ToListAsync();
+    return Ok(courriers.Select(ToUnifiedResponse));
+}
 
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetById(int id)
@@ -62,7 +59,7 @@ namespace GestionCourrier.Controllers
             return Ok(waridat.Select(ToResponse));
         }
 
-        // ========== CRUD administratif ==========
+        // ========== CREATE ==========
         [HttpPost]
         public async Task<IActionResult> Create(CourrierAdministratifRequest request)
         {
@@ -76,7 +73,7 @@ namespace GestionCourrier.Controllers
                 {
                     IdBureauOrdre = idBureauOrdre,
                     DateCreation = request.Date,
-                    Source = request.Source.Trim(),
+                    Source = request.Source?.Trim() ?? string.Empty,
                     Sujet = request.Sujet.Trim(),
                     Destinataire = request.Destinataire?.Trim() ?? string.Empty,
                     Description = request.Description?.Trim() ?? string.Empty,
@@ -193,6 +190,7 @@ namespace GestionCourrier.Controllers
             return Ok(new { lienPdf = $"/uploads/documents/{fileName}" });
         }
 
+        // ========== SEARCH ==========
         [HttpGet("search")]
         public async Task<IActionResult> Search(string? motCle, string? numeroBureauOrdre, DateTime? date, string? type)
         {
@@ -211,6 +209,7 @@ namespace GestionCourrier.Controllers
             return Ok(results.Select(ToUnifiedResponse));
         }
 
+        // ========== EXPORT ==========
         [HttpGet("export/excel")]
         public async Task<IActionResult> ExportExcel(string? motCle, string? numeroBureauOrdre, DateTime? date, string? type)
         {
@@ -268,6 +267,7 @@ namespace GestionCourrier.Controllers
             return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "courriers-administratifs.xlsx");
         }
 
+        // ========== IMPORT ==========
         [HttpPost("import/excel")]
         public async Task<IActionResult> ImportExcel(IFormFile file)
         {
@@ -396,7 +396,7 @@ namespace GestionCourrier.Controllers
             return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "modele_import_courriers.xlsx");
         }
 
-        // ========== MÉTHODES PRIVÉES ==========
+        // ================== PRIVATE HELPERS ==================
         private IQueryable<UnifiedCourrier> GetUnifiedQuery()
         {
             var administratifs = _context.Entites
@@ -453,31 +453,28 @@ namespace GestionCourrier.Controllers
             return administratifs.Concat(judiciaires);
         }
 
-        private static object ToUnifiedResponse(UnifiedCourrier u)
+        private static object ToUnifiedResponse(UnifiedCourrier u) => new
         {
-            return new
-            {
-                id = u.Id,
-                idBureauOrdre = u.IdBureauOrdre,
-                date = u.DateCreation,
-                sujet = u.Sujet,
-                source = u.Source,
-                destinataire = u.Destinataire,
-                description = u.Description,
-                etat = u.Etat,
-                lienPdf = u.LienPdf,
-                direction = u.Direction,
-                typeRegistre = u.TypeRegistre,
-                typeCorrespondance = u.TypeCorrespondance,
-                parentId = u.ParentId,
-                typeDocument = u.IsJudicial ? "Judiciaire" : "Administratif",
-                typeGenerale = u.Direction == "Sortant" ? TypeEntite.CourrierSortant : (u.Direction == "Interne" ? TypeEntite.Interne : TypeEntite.CourrierEntrant),
-                numeroDeCourrier = u.NumeroDeCourrier,
-                estTransmissible = u.EstTransmissible,
-                idService = u.IdService,
-                serviceNom = u.ServiceNom
-            };
-        }
+            id = u.Id,
+            idBureauOrdre = u.IdBureauOrdre,
+            date = u.DateCreation,
+            sujet = u.Sujet,
+            source = u.Source,
+            destinataire = u.Destinataire,
+            description = u.Description,
+            etat = u.Etat,
+            lienPdf = u.LienPdf,
+            direction = u.Direction,
+            typeRegistre = u.TypeRegistre,
+            typeCorrespondance = u.TypeCorrespondance,
+            parentId = u.ParentId,
+            typeDocument = u.IsJudicial ? "Judiciaire" : "Administratif",
+            typeGenerale = u.Direction == "Sortant" ? TypeEntite.CourrierSortant : (u.Direction == "Interne" ? TypeEntite.Interne : TypeEntite.CourrierEntrant),
+            numeroDeCourrier = u.NumeroDeCourrier,
+            estTransmissible = u.EstTransmissible,
+            idService = u.IdService,
+            serviceNom = u.ServiceNom
+        };
 
         private IQueryable<Entite> BaseQuery() => _context.Entites.Include(e => e.Service).Where(e => e.TypeDocument == TypeDocumentAdministratif);
 
@@ -532,23 +529,34 @@ namespace GestionCourrier.Controllers
             var typeRegistre = NormalizeTypeRegistre(request.TypeRegistre);
             var typeCorrespondance = NormalizeTypeCorrespondance(request.TypeCorrespondance, request.Direction);
             var direction = NormalizeDirection(request.Direction);
-            var idBureauOrdre = request.IdBureauOrdre!.Trim();
+            var idBureauOrdre = (request.IdBureauOrdre ?? string.Empty).Trim();
 
-            if (await ExistsIdBureauOrdre(idBureauOrdre, excludeId))
-                throw new InvalidOperationException("Ce numero bureau d'ordre existe deja dans le registre administratif.");
-
-            if (!await IsIdBureauOrdreUniqueWithJudicial(idBureauOrdre, excludeId))
-                throw new InvalidOperationException("Ce numero bureau d'ordre est déjà utilisé dans un dossier judiciaire.");
-
-            if (typeRegistre == TypeRegistreMorasalat && request.ParentId.HasValue && request.ParentId.Value > 0)
+            // Reply – skip uniqueness checks
+            if (request.ParentId.HasValue && request.ParentId.Value > 0)
             {
-                var parent = await FindWaridatParent(request.ParentId.Value);
-                if (parent == null) throw new InvalidOperationException("Waridat parent introuvable.");
-                if (string.IsNullOrWhiteSpace(parent.IdBureauOrdre)) throw new InvalidOperationException("La waridat parent n'a pas de numero bureau d'ordre.");
-                return (parent.IdBureauOrdre, parent.IdEntite, typeCorrespondance == TypeCorrespondanceSortante ? "Sortant" : "Interne", typeCorrespondance);
+                return (idBureauOrdre, request.ParentId.Value, direction, typeCorrespondance);
             }
 
+            // Standalone – must be unique
+            if (string.IsNullOrEmpty(idBureauOrdre))
+                throw new InvalidOperationException("Le numéro de bureau d'ordre est obligatoire pour un enregistrement principal.");
+
+            if (await ExistsIdBureauOrdre(idBureauOrdre, excludeId))
+                throw new InvalidOperationException("Ce numéro de bureau d'ordre existe déjà dans le registre administratif.");
+
+            if (!await IsIdBureauOrdreUniqueWithJudicial(idBureauOrdre, excludeId))
+                throw new InvalidOperationException("Ce numéro de bureau d'ordre est déjà utilisé dans un dossier judiciaire.");
+
             return (idBureauOrdre, null, typeRegistre == TypeRegistreWaridat ? "Entrant" : (typeCorrespondance == TypeCorrespondanceSortante ? "Sortant" : "Interne"), typeCorrespondance);
+        }
+
+        private async Task<bool> ExistsIdBureauOrdre(string idBureauOrdre, int? excludedId = null)
+        {
+            var normalized = idBureauOrdre.Trim();
+            return await _context.Entites.AnyAsync(e =>
+                e.TypeDocument == TypeDocumentAdministratif && e.ParentId == null &&
+                e.IdBureauOrdre != null && e.IdBureauOrdre.Trim() == normalized &&
+                (!excludedId.HasValue || e.IdEntite != excludedId.Value));
         }
 
         private async Task<bool> IsIdBureauOrdreUniqueWithJudicial(string idBureauOrdre, int? excludeId = null)
@@ -562,30 +570,12 @@ namespace GestionCourrier.Controllers
             return !conflict;
         }
 
-        private async Task<bool> ExistsIdBureauOrdre(string idBureauOrdre, int? excludedId = null)
-        {
-            var normalized = idBureauOrdre.Trim();
-            return await _context.Entites.AnyAsync(e =>
-                e.TypeDocument == TypeDocumentAdministratif && e.ParentId == null &&
-                e.IdBureauOrdre != null && e.IdBureauOrdre.Trim() == normalized &&
-                (!excludedId.HasValue || e.IdEntite != excludedId.Value));
-        }
-
-        private async Task<Entite?> FindWaridatParent(int parentId) =>
-            await _context.Entites.FirstOrDefaultAsync(e =>
-                e.IdEntite == parentId && e.TypeDocument == TypeDocumentAdministratif &&
-                (e.TypeRegistre == TypeRegistreWaridat || e.TypeRegistre == null || e.TypeRegistre == string.Empty) &&
-                e.ParentId == null);
-
         private async Task<IActionResult?> ValidateRequest(CourrierAdministratifRequest request)
         {
-            var typeRegistre = NormalizeTypeRegistre(request.TypeRegistre);
-            if (typeRegistre == TypeRegistreWaridat && string.IsNullOrWhiteSpace(request.IdBureauOrdre))
-                return BadRequest("Numero bureau d'ordre obligatoire.");
-            if (typeRegistre == TypeRegistreMorasalat && (!request.ParentId.HasValue || request.ParentId.Value <= 0) && string.IsNullOrWhiteSpace(request.IdBureauOrdre))
-                return BadRequest("Numero bureau d'ordre obligatoire pour une morasalat independante.");
+            bool isStandalone = !request.ParentId.HasValue || request.ParentId.Value <= 0;
+            if (isStandalone && string.IsNullOrWhiteSpace(request.IdBureauOrdre))
+                return BadRequest("Le numéro de bureau d'ordre est obligatoire pour un enregistrement principal.");
             if (request.Date == default) return BadRequest("Date obligatoire.");
-            if (string.IsNullOrWhiteSpace(request.Source)) return BadRequest("Source obligatoire.");
             if (string.IsNullOrWhiteSpace(request.Sujet)) return BadRequest("Sujet obligatoire.");
             if (request.IdService <= 0) return BadRequest("Service obligatoire.");
             if (!await _context.Services.AnyAsync(s => s.IdService == request.IdService)) return BadRequest("Service inexistant.");
@@ -672,6 +662,26 @@ namespace GestionCourrier.Controllers
         }
     }
 
+    // DTOs
+    public class CourrierAdministratifRequest
+    {
+        public string? IdBureauOrdre { get; set; }
+        public DateTime Date { get; set; }
+        public string? Source { get; set; }
+        public string Sujet { get; set; } = string.Empty;
+        public string? Destinataire { get; set; }
+        public string? Description { get; set; }
+        public string? Etat { get; set; }
+        public string? LienPdf { get; set; }
+        public string? Direction { get; set; }
+        public string? TypeRegistre { get; set; }
+        public string? TypeCorrespondance { get; set; }
+        public int? ParentId { get; set; }      // ← for replies
+        public int IdService { get; set; }
+        public string? NumeroDeCourrier { get; set; }
+        public bool EstTransmissible { get; set; }
+    }
+
     public class UnifiedCourrier
     {
         public int Id { get; set; }
@@ -693,24 +703,5 @@ namespace GestionCourrier.Controllers
         public int IdService { get; set; }
         public string? ServiceNom { get; set; }
         public bool EstArchive { get; set; }
-    }
-
-    public class CourrierAdministratifRequest
-    {
-        public string? IdBureauOrdre { get; set; }
-        public DateTime Date { get; set; }
-        public string Source { get; set; } = string.Empty;
-        public string Sujet { get; set; } = string.Empty;
-        public string? Destinataire { get; set; }
-        public string? Description { get; set; }
-        public string? Etat { get; set; }
-        public string? LienPdf { get; set; }
-        public string? Direction { get; set; }
-        public string? TypeRegistre { get; set; }
-        public string? TypeCorrespondance { get; set; }
-        public int? ParentId { get; set; }
-        public int IdService { get; set; }
-        public string? NumeroDeCourrier { get; set; }
-        public bool EstTransmissible { get; set; }
     }
 }
