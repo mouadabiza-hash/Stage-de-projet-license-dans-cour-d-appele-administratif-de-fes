@@ -19,7 +19,6 @@ function ActeursJudiciaires() {
   const [error, setError] = useState('');
 
   // Search state
-  const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState({
     numeroDossier: '',
     numeroPremiereInstance: '',
@@ -30,9 +29,26 @@ function ActeursJudiciaires() {
     dateFin: ''
   });
 
+  // Dynamic document states from ListItems
+  const [documentStates, setDocumentStates] = useState([]);
+
   // Document consultation
   const [showDocModal, setShowDocModal] = useState(false);
   const [currentDocument, setCurrentDocument] = useState(null);
+
+  // Fetch document states
+  useEffect(() => {
+    const fetchStates = async () => {
+      try {
+        const res = await axios.get('/api/ListItems?listName=DocumentState');
+        setDocumentStates(res.data.sort((a, b) => a.displayOrder - b.displayOrder));
+      } catch (err) {
+        console.error('Failed to load document states', err);
+        // No fallback – dropdown will be empty if API fails
+      }
+    };
+    fetchStates();
+  }, []);
 
   useEffect(() => {
     fetchItems();
@@ -54,7 +70,7 @@ function ActeursJudiciaires() {
       const motCle = buildQuery();
       const url = motCle
         ? `/api/acteursjudiciaires/search?motCle=${encodeURIComponent(motCle)}`
-        : '/api/acteursjudiciaires/search'; // search without keyword returns all now
+        : '/api/acteursjudiciaires/search';
 
       const res = await axios.get(url);
       let data = res.data;
@@ -102,6 +118,13 @@ function ActeursJudiciaires() {
     });
   };
 
+  // Helper to get display value for état
+  const getEtatDisplay = (etatCode) => {
+    const state = documentStates.find(s => s.code === etatCode);
+    if (!state) return etatCode || '-';
+    return locale === 'ar' ? state.valueAr : state.valueFr;
+  };
+
   return (
     <div className="page-container" dir="rtl">
       <h1 className="page-title">{t('menu_acteurs_judiciaires') || 'السجل القضائي'}</h1>
@@ -109,46 +132,44 @@ function ActeursJudiciaires() {
 
       {/* Advanced search panel */}
       <div className="form-card" style={{ marginBottom: '1.5rem' }}>
-          <h3>{t('recherche_avancee') || 'بحث متقدم'}</h3>
-        
-      
-          <div className="form-grid">
-            <div className="form-field">
-              <label>{t('numero_dossier') || 'رقم الاستئنافي'}</label>
-              <input value={search.numeroDossier} onChange={e => setSearch({...search, numeroDossier: e.target.value})} placeholder="2026/15/3" />
-            </div>
-            <div className="form-field">
-              <label>{t('numero_premiere_instance') || 'الرقم الابتدائي'}</label>
-              <input value={search.numeroPremiereInstance} onChange={e => setSearch({...search, numeroPremiereInstance: e.target.value})} placeholder="2026/12" />
-            </div>
-            <div className="form-field">
-              <label>{t('tribunal_source') || 'المحكمة/المصدر'}</label>
-              <input value={search.tribunalSource} onChange={e => setSearch({...search, tribunalSource: e.target.value})} />
-            </div>
-            <div className="form-field">
-              <label>{t('objet') || 'الموضوع'}</label>
-              <input value={search.sujet} onChange={e => setSearch({...search, sujet: e.target.value})} />
-            </div>
-            <div className="form-field">
-              <label>{t('etat') || 'الحالة'}</label>
-              <select value={search.etat} onChange={e => setSearch({...search, etat: e.target.value})}>
-                <option value="">{t('tous_etats') || 'الكل'}</option>
-                <option value="Nouveau">{t('nouveau') || 'جديد'}</option>
-                <option value="En cours">{t('en_cours') || 'قيد المعالجة'}</option>
-                <option value="Traite">{t('traite') || 'تمت المعالجة'}</option>
-                <option value="Archive">{t('archive') || 'مؤرشف'}</option>
-              </select>
-            </div>
-            <div className="form-field">
-              <label>{t('date_debut') || 'من تاريخ'}</label>
-              <input type="date" value={search.dateDebut} onChange={e => setSearch({...search, dateDebut: e.target.value})} />
-            </div>
-            <div className="form-field">
-              <label>{t('date_fin') || 'إلى تاريخ'}</label>
-              <input type="date" value={search.dateFin} onChange={e => setSearch({...search, dateFin: e.target.value})} />
-            </div>
+        <h3>{t('recherche_avancee') || 'بحث متقدم'}</h3>
+        <div className="form-grid">
+          <div className="form-field">
+            <label>{t('numero_dossier') || 'رقم الملف'}</label>
+            <input value={search.numeroDossier} onChange={e => setSearch({...search, numeroDossier: e.target.value})} placeholder="2026/15/3" />
           </div>
-        
+          <div className="form-field">
+            <label>{t('numero_premiere_instance') || 'الرقم الابتدائي'}</label>
+            <input value={search.numeroPremiereInstance} onChange={e => setSearch({...search, numeroPremiereInstance: e.target.value})} placeholder="2026/7209/1" />
+          </div>
+          <div className="form-field">
+            <label>{t('tribunal_source') || 'المحكمة/المصدر'}</label>
+            <input value={search.tribunalSource} onChange={e => setSearch({...search, tribunalSource: e.target.value})} />
+          </div>
+          <div className="form-field">
+            <label>{t('objet') || 'الموضوع'}</label>
+            <input value={search.sujet} onChange={e => setSearch({...search, sujet: e.target.value})} />
+          </div>
+          <div className="form-field">
+            <label>{t('etat') || 'الحالة'}</label>
+            <select value={search.etat} onChange={e => setSearch({...search, etat: e.target.value})}>
+              <option value="">{t('tous_etats') || 'الكل'}</option>
+              {documentStates.map(state => (
+                <option key={state.code} value={state.code}>
+                  {locale === 'ar' ? state.valueAr : state.valueFr}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-field">
+            <label>{t('date_debut') || 'من تاريخ'}</label>
+            <input type="date" value={search.dateDebut} onChange={e => setSearch({...search, dateDebut: e.target.value})} />
+          </div>
+          <div className="form-field">
+            <label>{t('date_fin') || 'إلى تاريخ'}</label>
+            <input type="date" value={search.dateFin} onChange={e => setSearch({...search, dateFin: e.target.value})} />
+          </div>
+        </div>
         <div className="form-actions">
           <button className="btn-primary" onClick={fetchItems}>{t('search') || 'بحث'}</button>
           <button className="btn-secondary" onClick={resetSearch}>{t('reinitialiser')}</button>
@@ -188,7 +209,7 @@ function ActeursJudiciaires() {
                 <td>{item.sujet || '-'}</td>
                 <td>{item.direction || '-'}</td>
                 <td>{item.serviceNom || item.idService || '-'}</td>
-                <td>{item.etatArchive || '-'}</td>
+                <td>{getEtatDisplay(item.etatArchive)}</td>
                 <td>{item.emplacement || '-'}</td>
                 <td>{item.retraitsCount ?? 0}</td>
                 <td>{item.lienPdf ? <a href={item.lienPdf} target="_blank" rel="noreferrer">PDF</a> : '-'}</td>

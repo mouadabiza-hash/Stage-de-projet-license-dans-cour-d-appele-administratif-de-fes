@@ -767,3 +767,148 @@ html[dir="ltr"] .section-title { border-right: none; border-left: 4px solid var(
   background: #e9d5ff;
   color: #6b21a8;
 }
+/* compact transfer user labels */
+.transfer-user-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.transfer-user-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+.type-badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.type-badge.administratif { background: #e0f2fe; color: #0369a1; }
+.type-badge.judiciaire    { background: #fef3c7; color: #b45309; }
+.type-badge.sortante      { background: #fce7f3; color: #be185d; }
+
+/* Professional action buttons – compact, pill-shaped */
+.action-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 20px;
+  background: #f8f9fc;
+  border: 1px solid #e2e8f0;
+  color: #1e3a5f;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.action-btn:hover {
+  background: #eef2f6;
+  border-color: #b9c8e0;
+  transform: translateY(-1px);
+}
+.action-btn-danger {
+  color: #b91c1c;
+}
+.action-btn-danger:hover {
+  background: #fee2e2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+.action-btn-success {
+  color: #0f6e3f;
+}
+.action-btn-success:hover {
+  background: #e0f2e9;
+  border-color: #b9e6ce;
+}
+.action-btn-warning {
+  color: #b45309;
+}
+.action-btn-warning:hover {
+  background: #fff3e3;
+  border-color: #fed7aa;
+}
+/* Source service (الخدمة المصدر) – light blue background */
+.source-service {
+  background-color: #e0f2fe;
+  color: #0369a1;
+  font-weight: 500;
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+}
+
+/* Destination service (المصلحة المرسل إليها) – light green background */
+.dest-service {
+  background-color: #dcfce7;
+  color: #166534;
+  font-weight: 500;
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+}
+/* Toolbar for registre table */
+.registre-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.registre-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.registre-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* For small screens */
+@media (max-width: 768px) {
+  .registre-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .registre-toolbar-left,
+  .registre-toolbar-right {
+    justify-content: space-between;
+  }
+}
+
+/* Style for the rows per page control */
+.rows-per-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #f8f9fc;
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
+}
+.rows-per-page select {
+  min-height: 32px;
+  padding: 0.2rem 0.4rem;
+  border-radius: 16px;
+  border: 1px solid #cbd5e1;
+  background: white;
+}
+

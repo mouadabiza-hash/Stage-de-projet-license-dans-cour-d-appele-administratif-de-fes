@@ -25,30 +25,33 @@ function MainLayout({ children }) {
   };
 
   // All possible menu items with roles
-const allMenuItems = [
-  { labelKey: 'dashboard', icon: 'grid', path: '/dashboard',
-    roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe'] },
-  { labelKey: 'menu_courriers', icon: 'mail', path: '/courriers',
-    roles: ['Admin','Greffier'] },                                      // ← only Admin & Greffier
-  { labelKey: 'menu_archives_juridiques', icon: 'archive', path: '/archives-juridiques',
+  const allMenuItems = [
+    { labelKey: 'dashboard', icon: 'grid', path: '/dashboard',
+      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe', 'Procedures'] },
+    { labelKey: 'menu_courriers', icon: 'mail', path: '/courriers',
+      roles: ['Admin','Greffier','Enregistrement','Procedures'] },  // ← ADD Enregistrement and Procedures
+    { labelKey: 'menu_archives_juridiques', icon: 'archive', path: '/archives-juridiques',
+      roles: ['Admin','Directeur','Archive'] },
+      { labelKey: 'menu_tous_les_retraits', icon: 'archive', path: '/tout-retraits',
     roles: ['Admin','Directeur','Archive'] },
-  { labelKey: 'menu_acteurs_judiciaires', icon: 'eye', path: '/acteurs-judiciaires',
-    roles: ['Admin','Directeur','Greffier','Enregistrement','Archive'] },
-  { labelKey: 'mes_entites', icon: 'building', path: '/mes-entites',
-    roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe'] },
-  { labelKey: 'registre_transactions', icon: 'send', path: '/transactions-outgoing',
-    roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe'] },
-  { labelKey: 'notifications', icon: 'bell', path: '/notifications',
-    roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe'] },
-  { labelKey: 'equipements', icon: 'settings', path: '/equipements',
-    roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe'] },
-  { labelKey: 'services', icon: 'service', path: '/services',
-    roles: ['Admin','Directeur'] },
-  { labelKey: 'utilisateurs', icon: 'users', path: '/utilisateurs',
-    roles: ['Admin','Directeur'] },
-  { labelKey: 'dossier_search', icon: 'search', path: '/dossier-search',
-    roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe'] },
-];
+      { labelKey: 'menu_acteurs_judiciaires', icon: 'eye', path: '/acteurs-judiciaires',
+      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive'] },
+    { labelKey: 'mes_entites', icon: 'building', path: '/mes-entites',
+      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe', 'Procedures'] },
+    { labelKey: 'registre_transactions', icon: 'send', path: '/transactions-outgoing',
+      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe', 'Procedures'] },
+    { labelKey: 'notifications', icon: 'bell', path: '/notifications',
+      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe', 'Procedures'] },
+    { labelKey: 'equipements', icon: 'settings', path: '/equipements',
+      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe', 'Procedures'] },
+    { labelKey: 'services', icon: 'service', path: '/services',
+      roles: ['Admin','Directeur'] },
+    { labelKey: 'utilisateurs', icon: 'users', path: '/utilisateurs',
+      roles: ['Admin','Directeur'] },
+    { labelKey: 'dossier_search', icon: 'search', path: '/dossier-search',
+      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe', 'Procedures'] },
+    { labelKey: 'gestion_listes', icon: 'list', path: '/gestion-listes', roles: ['Admin'] },
+    ];
 
   // Filter by user role
   const menuItems = allMenuItems.filter(item => item.roles.includes(user?.role));

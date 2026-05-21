@@ -11,6 +11,8 @@ namespace GestionCourrier.Models
         public const string Enregistrement = "Enregistrement";
         public const string Archive = "Archive";
         public const string Employe = "Employe";
+        public const string Procedures = "Procedures";
+        public const string Consultant = "Consultant";
     }
 
     public class Utilisateur

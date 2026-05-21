@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using ClosedXML.Excel;
 using GestionCourrier.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -27,14 +28,14 @@ namespace GestionCourrier.Controllers
         }
 
         // ========== UNIFIED LIST ==========
-[HttpGet]
-public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? date, string? type)
-{
-    var query = GetUnifiedQuery();   // NO .Where(e => e.ParentId == null)
-    query = ApplyStructuredFilters(query, numeroBureauOrdre, date, type);
-    var courriers = await query.OrderByDescending(e => e.DateCreation).ThenByDescending(e => e.Id).ToListAsync();
-    return Ok(courriers.Select(ToUnifiedResponse));
-}
+        [HttpGet]
+        public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? date, string? type)
+        {
+            var query = GetUnifiedQuery();
+            query = ApplyStructuredFilters(query, numeroBureauOrdre, date, type);
+            var courriers = await query.OrderByDescending(e => e.DateCreation).ThenByDescending(e => e.Id).ToListAsync();
+            return Ok(courriers.Select(ToUnifiedResponse));
+        }
 
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetById(int id)
@@ -45,18 +46,6 @@ public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? dat
             var judicial = await _context.EntitesDJs.Include(e => e.Service).FirstOrDefaultAsync(e => e.Id == id);
             if (judicial == null) return NotFound("Courrier introuvable");
             return Ok(ToJudicialResponse(judicial));
-        }
-
-        [HttpGet("waridat")]
-        public async Task<IActionResult> GetWaridat()
-        {
-            var waridat = await BaseQuery()
-                .Where(e => !e.EstArchive && e.ParentId == null &&
-                    (e.TypeRegistre == TypeRegistreWaridat || e.TypeRegistre == null || e.TypeRegistre == string.Empty))
-                .OrderByDescending(e => e.DateCreation)
-                .ThenByDescending(e => e.IdEntite)
-                .ToListAsync();
-            return Ok(waridat.Select(ToResponse));
         }
 
         // ========== CREATE ==========
@@ -166,8 +155,12 @@ public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? dat
         {
             var courrier = await _context.Entites.FirstOrDefaultAsync(e => e.IdEntite == id && e.TypeDocument == TypeDocumentAdministratif);
             if (courrier == null) return NotFound("Courrier introuvable");
+            
+            int archivesServiceId = await GetArchivesServiceId();
+            courrier.IdService = archivesServiceId;
             courrier.EstArchive = true;
             courrier.Etat = "Archive";
+            
             await _context.SaveChangesAsync();
             return Ok(ToResponse(courrier));
         }
@@ -210,11 +203,77 @@ public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? dat
         }
 
         // ========== EXPORT ==========
+        private static void ApplyHeaderStructure(IXLWorksheet ws)
+        {
+            var grayFill  = XLColor.FromArgb(165, 165, 165);
+            var lightGray = XLColor.FromArgb(242, 242, 242);
+            var whiteFont = XLColor.White;
+            var blackFont = XLColor.Black;
+
+            void ApplyMainHeader(IXLRange range, string value)
+            {
+                range.Merge();
+                range.Value = value;
+                range.Style.Font.Bold = true;
+                range.Style.Font.FontColor = whiteFont;
+                range.Style.Fill.BackgroundColor = grayFill;
+                range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                range.Style.Alignment.Vertical   = XLAlignmentVerticalValues.Center;
+                range.Style.Alignment.WrapText   = true;
+                range.Style.Border.OutsideBorder      = XLBorderStyleValues.Medium;
+                range.Style.Border.OutsideBorderColor = XLColor.Black;
+            }
+
+            ApplyMainHeader(ws.Range("A1:F1"), "المراسلات");
+            ApplyMainHeader(ws.Range("G1:L2"), "الواردات(cette champs remplie par les entrant administratif ou judiciares)");
+            ws.Row(1).Height = 30;
+
+            ApplyMainHeader(ws.Range("A2:A3"), "النتيجة (cette champs just pour le note il restes vide)");
+            ApplyMainHeader(ws.Range("B2:C2"), "الواردة(cette case remplire pas la reponse sur sortant si exist )");
+            ApplyMainHeader(ws.Range("D2:F2"), "صادرة(cette case remplir par les sortant ou si il y a une reponse sur(Administratif ou Judiciare))");
+            ws.Row(2).Height = 40;
+
+            string[] colHeaders = { "المصدر والجواب", "التاريخ", "الموضوع", "المرسل إليه", "التاريخ", "الموضوع", "اسم وموطن المرسل إليه", "تاريخ الوصول", "رقمها", "التاريخ الرسالة", "رقم الترتيبي" };
+            for (int i = 0; i < colHeaders.Length; i++)
+            {
+                var cell = ws.Cell(3, i + 2);
+                cell.Value = colHeaders[i];
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.FontColor = blackFont;
+                cell.Style.Fill.BackgroundColor = grayFill;
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                cell.Style.Alignment.Vertical   = XLAlignmentVerticalValues.Center;
+                cell.Style.Alignment.WrapText   = true;
+                cell.Style.Border.OutsideBorder      = XLBorderStyleValues.Thin;
+                cell.Style.Border.OutsideBorderColor = XLColor.Black;
+            }
+            ws.Row(3).Height = 50;
+
+            var headerBlock = ws.Range("A1:L3");
+            headerBlock.Style.Border.OutsideBorder      = XLBorderStyleValues.Medium;
+            headerBlock.Style.Border.OutsideBorderColor = XLColor.Black;
+
+            ws.Column(1).Width  = 30;
+            ws.Column(2).Width  = 40;
+            ws.Column(3).Width  = 15;
+            ws.Column(4).Width  = 40;
+            ws.Column(5).Width  = 30;
+            ws.Column(6).Width  = 15;
+            ws.Column(7).Width  = 40;
+            ws.Column(8).Width  = 35;
+            ws.Column(9).Width  = 15;
+            ws.Column(10).Width = 13;
+            ws.Column(11).Width = 13;
+            ws.Column(12).Width = 13;
+        }
+        
+
         [HttpGet("export/excel")]
-        public async Task<IActionResult> ExportExcel(string? motCle, string? numeroBureauOrdre, DateTime? date, string? type)
+        public async Task<IActionResult> ExportExcel(string? motCle, string? numeroBureauOrdre, DateTime? date, string? type, [FromQuery] List<int> ids)
         {
             var query = GetUnifiedQuery().Where(e => e.ParentId == null);
             query = ApplyStructuredFilters(query, numeroBureauOrdre, date, type);
+
             if (!string.IsNullOrWhiteSpace(motCle))
             {
                 var keyword = motCle.Trim();
@@ -224,176 +283,582 @@ public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? dat
                     e.Destinataire.StartsWith(keyword) || e.Description.StartsWith(keyword) ||
                     e.Etat.StartsWith(keyword));
             }
-            var courriers = await query.OrderByDescending(e => e.DateCreation).ThenByDescending(e => e.Id).ToListAsync();
+
+            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+            if (userRole == "Enregistrement" || userRole == "Procedures")
+                query = query.Where(e => string.IsNullOrEmpty(e.IdBureauOrdre));
+            else if (userRole == "Greffier")
+                query = query.Where(e => !string.IsNullOrEmpty(e.IdBureauOrdre));
+
+            if (ids != null && ids.Any())
+                query = query.Where(e => ids.Contains(e.Id));
+
+            var courriers = await query.ToListAsync();
+            courriers = courriers.OrderBy(c =>
+            {
+                if (string.IsNullOrWhiteSpace(c.IdBureauOrdre)) return int.MaxValue;
+                var parts = c.IdBureauOrdre.Split('/');
+                return parts.Length > 0 && int.TryParse(parts[0], out int num) ? num : int.MaxValue;
+            }).ToList();
 
             using var workbook = new XLWorkbook();
             var ws = workbook.Worksheets.Add("Courriers");
-            string[] headers = {
-                "رقم مكتب الضبط", "تاريخ الواردة / المراسلة", "مصدر الواردة", "موضوع الواردة",
-                "المرسل إليه / المحال عليه", "المراسلات الصادرة", "المراسلات الواردة", "المصلحة",
-                "الحالة", "الرقم الداخلي", "رابط PDF", "الملاحظات / النتيجة"
-            };
-            for (int i = 0; i < headers.Length; i++)
-                ws.Cell(1, i + 1).Value = headers[i];
+            ApplyHeaderStructure(ws);
 
-            int row = 2;
+            var bodyGray = XLColor.FromArgb(242, 242, 242);
+            int row = 4;
+
             foreach (var c in courriers)
             {
-                ws.Cell(row, 1).Value = c.IdBureauOrdre;
-                ws.Cell(row, 2).Value = c.DateCreation;
-                ws.Cell(row, 2).Style.DateFormat.Format = "dd/MM/yyyy";
-                ws.Cell(row, 3).Value = c.IsJudicial ? c.Source : (c.TypeRegistre == TypeRegistreMorasalat ? string.Empty : c.Source);
-                ws.Cell(row, 4).Value = c.IsJudicial ? c.Sujet : (c.TypeRegistre == TypeRegistreMorasalat ? string.Empty : c.Sujet);
-                ws.Cell(row, 5).Value = c.IsJudicial ? c.Destinataire : (c.TypeRegistre == TypeRegistreMorasalat ? string.Empty : c.Destinataire);
-                ws.Cell(row, 6).Value = (c.TypeRegistre == TypeRegistreMorasalat && (c.TypeCorrespondance == TypeCorrespondanceSortante || c.Direction == "Sortant")) ? FormatCorrespondanceFromUnified(c) : "";
-                ws.Cell(row, 7).Value = (c.TypeRegistre == TypeRegistreMorasalat && (c.TypeCorrespondance == TypeCorrespondanceEntrante || c.Direction == "Interne")) ? FormatCorrespondanceFromUnified(c) : "";
-                ws.Cell(row, 8).Value = c.ServiceNom;
-                ws.Cell(row, 9).Value = ToArabicEtat(c.Etat);
-                ws.Cell(row, 10).Value = c.NumeroDeCourrier;
-                ws.Cell(row, 11).Value = c.LienPdf;
-                ws.Cell(row, 12).Value = c.Description;
+                DateTime? extractedDateMessage = null;
+                var desc = c.Description ?? "";
+                var match = System.Text.RegularExpressions.Regex.Match(desc, @"تاريخ الرسالة:\s*(\S+)");
+                if (match.Success && DateTime.TryParse(match.Groups[1].Value, out DateTime parsedDate))
+                    extractedDateMessage = parsedDate;
+
+                string resultNote = "", sourceReply = "";
+                DateTime? date1 = null;
+                string subject1 = "", destinataire = "";
+                DateTime? date2 = null;
+                string subject2 = "", senderName = "";
+                DateTime? arrivalDate = null;
+                string number = "";
+                DateTime? letterDate = null;
+                string serialNumber = "";
+
+                var reply = await _context.Entites.FirstOrDefaultAsync(e => e.ParentId == c.Id && e.TypeDocument == TypeDocumentAdministratif);
+                bool isOutgoing = (c.TypeRegistre == "Morasalat" && c.TypeCorrespondance == "Sortante") || c.Direction == "Sortant";
+
+                if (isOutgoing)
+                {
+                    subject1 = c.Sujet ?? "";
+                    destinataire = c.Destinataire ?? "";
+                    date2 = c.DateCreation;
+                    serialNumber = c.IdBureauOrdre ?? "";
+                    if (reply != null) { sourceReply = reply.Sujet ?? ""; date1 = reply.DateCreation; }
+                }
+                else
+                {
+                    subject2 = c.Sujet ?? "";
+                    senderName = c.Source ?? "";
+                    arrivalDate = c.DateCreation;
+                    number = c.NumeroDeCourrier ?? "";
+                    letterDate = extractedDateMessage;
+                    serialNumber = c.IdBureauOrdre ?? "";
+                    if (reply != null) { subject1 = reply.Sujet ?? ""; destinataire = reply.Destinataire ?? ""; date2 = reply.DateCreation; }
+                }
+
+                ws.Cell(row, 1).Value = resultNote;
+                ws.Cell(row, 2).Value = sourceReply;
+                SetDate(ws.Cell(row, 3), date1);
+                ws.Cell(row, 4).Value = subject1;
+                ws.Cell(row, 5).Value = destinataire;
+                SetDate(ws.Cell(row, 6), date2);
+                ws.Cell(row, 7).Value = subject2;
+                ws.Cell(row, 8).Value = senderName;
+                SetDate(ws.Cell(row, 9), arrivalDate);
+                ws.Cell(row, 10).Value = number;
+                SetDate(ws.Cell(row, 11), letterDate);
+                ws.Cell(row, 12).Value = serialNumber;
+
+                var rowRange = ws.Range(row, 1, row, 12);
+                rowRange.Style.Fill.BackgroundColor = bodyGray;
+                rowRange.Style.Font.FontColor = XLColor.Black;
+                rowRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                rowRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                rowRange.Style.Alignment.WrapText = true;
+                rowRange.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+                rowRange.Style.Border.OutsideBorderColor = XLColor.Black;
+                rowRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+                rowRange.Style.Border.InsideBorderColor = XLColor.FromArgb(180, 180, 180);
+                ws.Row(row).Height = 35;
                 row++;
             }
-            ws.Row(1).Style.Font.Bold = true;
-            ws.Row(1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            ws.SheetView.FreezeRows(1);
-            ws.Columns(1, headers.Length).Width = 24;
-            ws.Column(6).Width = 45;
-            ws.Column(7).Width = 45;
-            ws.Column(12).Width = 40;
+
+            if (row > 4) ws.Range(4, 1, row - 1, 12).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
 
             using var stream = new MemoryStream();
             workbook.SaveAs(stream);
-            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "courriers-administratifs.xlsx");
+            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"courriers_{DateTime.Now:yyyyMMddHHmm}.xlsx");
         }
 
-        // ========== IMPORT ==========
-        [HttpPost("import/excel")]
-        public async Task<IActionResult> ImportExcel(IFormFile file)
+        // ========== TEMPLATE ==========
+        [HttpGet("template-excel")]
+        public IActionResult GetTemplateExcel([FromQuery] string? type)
         {
-            if (file == null || file.Length == 0)
-                return BadRequest("Fichier Excel requis.");
+            using var workbook = new XLWorkbook();
+            var ws = workbook.Worksheets.Add("Import");
+            var normalizedType = (type ?? "administratif").Trim().ToLower();
 
-            var userName = User.Identity?.Name;
-            var currentUser = await _context.Utilisateurs
-                .Include(u => u.Service)
-                .FirstOrDefaultAsync(u => u.Login == userName);
-            if (currentUser == null) return Unauthorized();
-            int defaultServiceId = currentUser.IdService;
+            switch (normalizedType)
+            {
+                case "judiciaire_file":
+                    BuildJudiciaryFileTemplate(ws);
+                    break;
+                case "judiciaire_linked":
+                    BuildJudiciaryLinkedTemplate(ws);
+                    break;
+                case "sortant":
+                    BuildSortantTemplate(ws);
+                    break;
+                default:
+                    BuildAdministratifTemplate(ws);
+                    break;
+            }
 
             using var stream = new MemoryStream();
-            await file.CopyToAsync(stream);
-            stream.Position = 0;
+            workbook.SaveAs(stream);
+            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"template_{normalizedType}.xlsx");
+        }
 
+        private static void ApplyTemplateStyle(IXLWorksheet ws, string[] headers, string[][] examples)
+        {
+            var headerFill   = XLColor.FromArgb(31, 78, 121);
+            var exampleFill  = XLColor.FromArgb(242, 242, 242);
+            var white        = XLColor.White;
+            var black        = XLColor.Black;
+
+            for (int col = 1; col <= headers.Length; col++)
+            {
+                var cell = ws.Cell(1, col);
+                cell.Value = headers[col - 1];
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.FontColor = white;
+                cell.Style.Fill.BackgroundColor = headerFill;
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                cell.Style.Alignment.Vertical   = XLAlignmentVerticalValues.Center;
+                cell.Style.Alignment.WrapText   = true;
+                cell.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+                cell.Style.Border.OutsideBorderColor = black;
+                ws.Column(col).Width = 22;
+            }
+            ws.Row(1).Height = 40;
+
+            for (int r = 0; r < examples.Length; r++)
+            {
+                for (int c = 0; c < examples[r].Length && c < headers.Length; c++)
+                {
+                    var cell = ws.Cell(r + 2, c + 1);
+                    cell.Value = examples[r][c];
+                    cell.Style.Fill.BackgroundColor = exampleFill;
+                    cell.Style.Font.FontColor = black;
+                    cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                    cell.Style.Alignment.Vertical   = XLAlignmentVerticalValues.Center;
+                    cell.Style.Alignment.WrapText   = true;
+                    cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                    cell.Style.Border.OutsideBorderColor = XLColor.FromArgb(180, 180, 180);
+                }
+                ws.Row(r + 2).Height = 25;
+            }
+
+            ws.Cell(1, headers.Length + 1).Value = "⚠ Ne pas modifier la ligne 1 (en-têtes)";
+            ws.Cell(1, headers.Length + 1).Style.Font.Italic = true;
+            ws.Cell(1, headers.Length + 1).Style.Font.FontColor = XLColor.OrangeRed;
+        }
+
+        private static void BuildAdministratifTemplate(IXLWorksheet ws)
+        {
+            var headers = new[] { "رقم مكتب الضبط", "الموضوع", "المصدر", "تاريخ الوصول", "الوصف / الملاحظات", "الرقم الداخلي", "تاريخ الرسالة" };
+            var examples = new[]
+            {
+                new[] { "1/2026", "طلب معلومات", "وزارة العدل", "15/03/2026", "مراجعة الطلب", "123", "10/03/2026" },
+                new[] { "2/2026", "استفسار قانوني", "المحكمة الابتدائية", "20/03/2026", "", "124", "18/03/2026" }
+            };
+            ApplyTemplateStyle(ws, headers, examples);
+        }
+
+        private static void BuildJudiciaryFileTemplate(IXLWorksheet ws)
+        {
+            var headers = new[] { "رقم مكتب الضبط", "الموضوع", "مصدر المحكمة", "التاريخ", "رقم الملف الاستئنافي", "رقم أول درجة", "الوصف" };
+            var examples = new[]
+            {
+                new[] { "10/2026", "نزاع عقاري", "المحكمة الابتدائية", "01/04/2026", "2026/10/3", "2025/5/1", "ملف مدني" },
+                new[] { "11/2026", "طعن بالاستئناف", "محكمة الاستئناف", "05/04/2026", "2026/11/3", "2025/6/2", "" }
+            };
+            ApplyTemplateStyle(ws, headers, examples);
+        }
+
+        private static void BuildJudiciaryLinkedTemplate(IXLWorksheet ws)
+        {
+            var headers = new[] { "الموضوع", "معرف الملف الأصلي", "التاريخ", "الوصف" };
+            var examples = new[]
+            {
+                new[] { "مذكرة استدعاء", "42", "10/04/2026", "وثيقة مرتبطة بالملف رقم 42" },
+                new[] { "حكم ابتدائي", "117", "12/04/2026", "" }
+            };
+            ApplyTemplateStyle(ws, headers, examples);
+        }
+
+        private static void BuildSortantTemplate(IXLWorksheet ws)
+        {
+            var headers = new[] { "رقم مكتب الضبط", "الموضوع", "المرسل إليه", "التاريخ", "الوصف / الملاحظات", "الرقم الداخلي" };
+            var examples = new[]
+            {
+                new[] { "5/2026", "رد على استفسار", "المحكمة الابتدائية", "22/03/2026", "", "501" },
+                new[] { "6/2026", "إشعار", "وزارة العدل", "25/03/2026", "هام", "502" }
+            };
+            ApplyTemplateStyle(ws, headers, examples);
+        }
+
+        private static void SetDate(IXLCell cell, DateTime? value)
+        {
+            if (value.HasValue)
+            {
+                cell.Value = value.Value;
+                cell.Style.DateFormat.Format = "dd/MM/yyyy";
+            }
+        }
+
+        // ========== IMPORT PREVIEW ==========
+        [HttpPost("import/preview")]
+        public IActionResult ImportPreview(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("Fichier requis.");
+
+            try
+            {
+                using var stream = file.OpenReadStream();
+                using var workbook = new XLWorkbook(stream);
+                var ws = workbook.Worksheet(1);
+
+                var headers = ws.Row(1)
+                    .Cells()
+                    .Select(c => c.GetString().Trim())
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .ToList();
+
+                return Ok(headers);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest($"Erreur de lecture: {ex.Message}");
+            }
+        }
+
+        // ========== IMPORT EXECUTE ==========
+        [HttpPost("import/execute")]
+        public async Task<IActionResult> ImportExecute(
+            IFormFile file,
+            [FromQuery] string type,
+            [FromQuery] string? colSerialNumber,
+            [FromQuery] string? colSubject,
+            [FromQuery] string? colSenderName,
+            [FromQuery] string? colArrivalDate,
+            [FromQuery] string? colResultNote,
+            [FromQuery] string? colNumber,
+            [FromQuery] string? colLetterDate,
+            [FromQuery] string? colTribunalSource,
+            [FromQuery] string? colDate,
+            [FromQuery] string? colNumeroDossier,
+            [FromQuery] string? colNumeroPremiereInstance,
+            [FromQuery] string? colDescription,
+            [FromQuery] string? colParentJudiciaireId,
+            [FromQuery] string? colDestinataire)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("Fichier requis.");
+
+            if (string.IsNullOrWhiteSpace(type))
+                return BadRequest("Le paramètre 'type' est obligatoire.");
+
+            var userName = User.Identity?.Name;
+            var currentUser = await _context.Utilisateurs.FirstOrDefaultAsync(u => u.Login == userName);
+            int defaultServiceId = currentUser?.IdService ?? 1;
+
+            using var stream = file.OpenReadStream();
             using var workbook = new XLWorkbook(stream);
             var ws = workbook.Worksheet(1);
-            var rows = ws.RowsUsed().Skip(1);
+
+            var headerMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var headerRow = ws.Row(1);
+            int colIdx = 1;
+            foreach (var cell in headerRow.Cells())
+            {
+                var headerText = cell.GetString().Trim();
+                if (!string.IsNullOrEmpty(headerText) && !headerMap.ContainsKey(headerText))
+                    headerMap[headerText] = colIdx;
+                colIdx++;
+            }
+
+            string GetVal(IXLRow row, string? mappedHeader)
+            {
+                if (string.IsNullOrWhiteSpace(mappedHeader)) return "";
+                if (!headerMap.TryGetValue(mappedHeader, out int idx)) return "";
+                return row.Cell(idx).GetString().Trim();
+            }
+
+            var dataRows = ws.RowsUsed().Skip(1).ToList();
             int imported = 0;
             var errors = new List<string>();
             int lineNumber = 2;
-            var seenIdBureauOrdre = new HashSet<string>();
 
-            foreach (var row in rows)
+            var normalizedType = type.Trim().ToLower();
+
+            foreach (var row in dataRows)
             {
-                var idBureauOrdre = row.Cell(1).GetString().Trim();
-                var dateText = row.Cell(2).GetString().Trim();
-                var source = row.Cell(3).GetString().Trim();
-                var sujet = row.Cell(4).GetString().Trim();
-                var destinataire = row.Cell(5).GetString().Trim();
-                var correspondanceSortante = row.Cell(6).GetString().Trim();
-                var correspondanceEntrante = row.Cell(7).GetString().Trim();
-                var etatText = row.Cell(9).GetString().Trim();
-                var numeroText = row.Cell(10).GetString().Trim();
-                var lienPdf = row.Cell(11).GetString().Trim();
-                var description = row.Cell(12).GetString().Trim();
-
-                var hasWaridatFields = !string.IsNullOrWhiteSpace(source) || !string.IsNullOrWhiteSpace(sujet);
-                var hasSortante = !string.IsNullOrWhiteSpace(correspondanceSortante);
-                var hasEntrante = !string.IsNullOrWhiteSpace(correspondanceEntrante);
-                var typeRegistre = hasWaridatFields ? TypeRegistreWaridat : TypeRegistreMorasalat;
-                var typeCorrespondance = hasSortante ? TypeCorrespondanceSortante : (hasEntrante ? TypeCorrespondanceEntrante : (string?)null);
-                var direction = typeRegistre == TypeRegistreWaridat
-                    ? "Entrant"
-                    : typeCorrespondance == TypeCorrespondanceSortante ? "Sortant" : "Interne";
-
-                if (!hasWaridatFields)
-                {
-                    source = hasEntrante ? "Import Excel" : source;
-                    sujet = hasSortante ? correspondanceSortante : correspondanceEntrante;
-                }
+                if (row.IsEmpty()) { lineNumber++; continue; }
 
                 var lineErrors = new List<string>();
 
-                if (string.IsNullOrWhiteSpace(idBureauOrdre))
-                    lineErrors.Add("Numero bureau d'ordre obligatoire");
-                else if (seenIdBureauOrdre.Contains(idBureauOrdre))
-                    lineErrors.Add($"Numero bureau d'ordre '{idBureauOrdre}' dupliqué dans le fichier");
-                else if (await ExistsIdBureauOrdre(idBureauOrdre))
-                    lineErrors.Add($"Numero bureau d'ordre '{idBureauOrdre}' existe déjà dans la base");
-                else
-                    seenIdBureauOrdre.Add(idBureauOrdre);
+                try
+                {
+                    switch (normalizedType)
+                    {
+                        case "administratif_entrant":
+                            await ImportAdministratif(row, lineErrors, defaultServiceId,
+                                GetVal(row, colSerialNumber), GetVal(row, colSubject), GetVal(row, colSenderName),
+                                GetVal(row, colArrivalDate), GetVal(row, colResultNote), GetVal(row, colNumber),
+                                GetVal(row, colLetterDate));
+                            if (lineErrors.Count == 0) imported++;
+                            break;
 
-                if (!TryReadDate(row.Cell(2), dateText, out var dateValue))
-                    lineErrors.Add("Date non valide");
-                if (string.IsNullOrWhiteSpace(source))
-                    lineErrors.Add("Source obligatoire");
-                if (string.IsNullOrWhiteSpace(sujet))
-                    lineErrors.Add("Sujet obligatoire");
+                        case "judiciaire_file":
+                            await ImportJudiciaireFile(row, lineErrors, defaultServiceId,
+                                GetVal(row, colSerialNumber), GetVal(row, colSubject), GetVal(row, colTribunalSource),
+                                GetVal(row, colDate), GetVal(row, colNumeroDossier), GetVal(row, colNumeroPremiereInstance),
+                                GetVal(row, colDescription));
+                            if (lineErrors.Count == 0) imported++;
+                            break;
+
+                        case "judiciaire_linked":
+                            await ImportJudiciaireLinked(row, lineErrors, defaultServiceId,
+                                GetVal(row, colSubject), GetVal(row, colParentJudiciaireId),
+                                GetVal(row, colDate), GetVal(row, colDescription));
+                            if (lineErrors.Count == 0) imported++;
+                            break;
+
+                        case "sortant":
+                            await ImportSortant(row, lineErrors, defaultServiceId,
+                                GetVal(row, colSerialNumber), GetVal(row, colSubject), GetVal(row, colDestinataire),
+                                GetVal(row, colDate), GetVal(row, colResultNote), GetVal(row, colNumber));
+                            if (lineErrors.Count == 0) imported++;
+                            break;
+
+                        default:
+                            lineErrors.Add($"Type inconnu: {type}");
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    lineErrors.Add($"Erreur inattendue: {ex.Message}");
+                }
 
                 if (lineErrors.Any())
-                {
                     errors.Add($"Ligne {lineNumber}: {string.Join(" | ", lineErrors)}");
-                }
-                else
-                {
-                    _context.Entites.Add(new Entite
-                    {
-                        IdBureauOrdre = idBureauOrdre,
-                        DateCreation = dateValue,
-                        Direction = direction,
-                        TypeGenerale = GetTypeGenerale(direction),
-                        Source = source,
-                        Sujet = sujet,
-                        Destinataire = destinataire,
-                        IdService = defaultServiceId,
-                        Etat = NormalizeEtat(FromArabicEtat(etatText)),
-                        NumeroDeCourrier = numeroText,
-                        LienPdf = lienPdf,
-                        Description = description,
-                        TypeDocument = TypeDocumentAdministratif,
-                        TypeRegistre = typeRegistre,
-                        TypeCorrespondance = typeCorrespondance,
-                        ParentId = null,
-                        EstArchive = false,
-                        EstTransmissible = false
-                    });
-                    imported++;
-                }
+
                 lineNumber++;
             }
-            await _context.SaveChangesAsync();
+
             return Ok(new { imported, errors });
         }
 
-        [HttpGet("template-excel")]
-        public IActionResult GetTemplateExcel()
+        // ========== IMPORT HELPERS ==========
+        private async Task ImportAdministratif(IXLRow row, List<string> errors, int serviceId,
+            string serialNumber, string subject, string senderName, string arrivalDateStr,
+            string description, string number, string letterDateStr)
         {
-            using var workbook = new XLWorkbook();
-            var ws = workbook.Worksheets.Add("Template");
-            var headers = new[] { "رقم مكتب الضبط", "التاريخ", "المصدر", "الموضوع", "المرسل إليه", "المراسلات الصادرة", "المراسلات الواردة", "المصلحة", "الحالة", "الرقم الداخلي", "رابط PDF", "الملاحظات / النتيجة" };
-            for (int i = 0; i < headers.Length; i++)
+            if (string.IsNullOrWhiteSpace(serialNumber))
+                errors.Add("رقم مكتب الضبط (N° bureau d'ordre) est vide");
+
+            if (string.IsNullOrWhiteSpace(subject))
+                errors.Add("الموضوع (Objet) est obligatoire");
+
+            if (string.IsNullOrWhiteSpace(senderName))
+                errors.Add("المصدر (Source) est obligatoire");
+
+            if (!TryParseDate(arrivalDateStr, out DateTime arrivalDate))
+                errors.Add($"تاريخ الوصول invalide: '{arrivalDateStr}' (format attendu: dd/MM/yyyy)");
+
+            if (errors.Any()) return;
+
+            var norm = serialNumber.Trim();
+            if (await _context.Entites.AnyAsync(e =>
+                    e.TypeDocument == "Administratif" && e.ParentId == null && e.IdBureauOrdre == norm))
             {
-                ws.Cell(1, i + 1).Value = headers[i];
-                ws.Cell(1, i + 1).Style.Font.Bold = true;
+                errors.Add($"رقم '{norm}' existe déjà en base");
+                return;
             }
-            ws.Cell(2, 1).Value = "12/2026";
-            ws.Cell(2, 2).Value = "01/01/2026";
-            ws.Cell(2, 3).Value = "Ministère X";
-            ws.Cell(2, 4).Value = "Objet du courrier";
-            ws.Cell(2, 8).Value = "خلية المعلوميات";
-            using var stream = new MemoryStream();
-            workbook.SaveAs(stream);
-            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "modele_import_courriers.xlsx");
+
+            string finalDescription = description;
+            if (!string.IsNullOrWhiteSpace(letterDateStr))
+            {
+                if (TryParseDate(letterDateStr, out DateTime ld))
+                    finalDescription = $"تاريخ الرسالة: {ld:yyyy-MM-dd}" +
+                                       (string.IsNullOrWhiteSpace(description) ? "" : $" | {description}");
+                else
+                    finalDescription = $"تاريخ الرسالة: {letterDateStr}" +
+                                       (string.IsNullOrWhiteSpace(description) ? "" : $" | {description}");
+            }
+
+            var entity = new Entite
+            {
+                IdBureauOrdre    = norm,
+                DateCreation     = arrivalDate,
+                Source           = senderName,
+                Sujet            = subject,
+                Destinataire     = "محكمة الاستئناف",
+                Description      = finalDescription,
+                Etat             = "Nouveau",
+                Direction        = "Entrant",
+                TypeRegistre     = "Waridat",
+                TypeDocument     = "Administratif",
+                TypeGenerale     = TypeEntite.CourrierEntrant,
+                NumeroDeCourrier = number,
+                IdService        = serviceId,
+                ParentId         = null,
+                EstTransmissible = true
+            };
+            _context.Entites.Add(entity);
+            await _context.SaveChangesAsync();
+        }
+
+        private async Task ImportSortant(IXLRow row, List<string> errors, int serviceId,
+            string serialNumber, string subject, string destinataire, string dateStr,
+            string description, string number)
+        {
+            if (string.IsNullOrWhiteSpace(serialNumber))
+                errors.Add("رقم مكتب الضبط est vide");
+
+            if (string.IsNullOrWhiteSpace(subject))
+                errors.Add("الموضوع est obligatoire");
+
+            if (!TryParseDate(dateStr, out DateTime date))
+                errors.Add($"التاريخ invalide: '{dateStr}'");
+
+            if (errors.Any()) return;
+
+            var norm = serialNumber.Trim();
+            if (await _context.Entites.AnyAsync(e =>
+                    e.TypeDocument == "Administratif" && e.ParentId == null && e.IdBureauOrdre == norm))
+            {
+                errors.Add($"رقم '{norm}' existe déjà en base");
+                return;
+            }
+
+            var entity = new Entite
+            {
+                IdBureauOrdre    = norm,
+                DateCreation     = date,
+                Source           = "Sortant",
+                Sujet            = subject,
+                Destinataire     = destinataire,
+                Description      = description,
+                Etat             = "Nouveau",
+                Direction        = "Sortant",
+                TypeRegistre     = "Morasalat",
+                TypeCorrespondance = "Sortante",
+                TypeDocument     = "Administratif",
+                TypeGenerale     = TypeEntite.CourrierSortant,
+                NumeroDeCourrier = number,
+                IdService        = serviceId,
+                ParentId         = null,
+                EstTransmissible = false
+            };
+            _context.Entites.Add(entity);
+            await _context.SaveChangesAsync();
+        }
+
+        private async Task ImportJudiciaireFile(IXLRow row, List<string> errors, int serviceId,
+            string serialNumber, string subject, string tribunalSource, string dateStr,
+            string numeroDossier, string numeroPremiereInstance, string description)
+        {
+            if (string.IsNullOrWhiteSpace(subject))
+                errors.Add("الموضوع est obligatoire");
+
+            if (!TryParseDate(dateStr, out DateTime date))
+                errors.Add($"التاريخ invalide: '{dateStr}'");
+
+            if (errors.Any()) return;
+
+            if (!string.IsNullOrWhiteSpace(serialNumber))
+            {
+                var norm = serialNumber.Trim();
+                if (await _context.EntitesDJs.AnyAsync(e => e.IdBureauOrdre == norm))
+                {
+                    errors.Add($"رقم '{norm}' existe déjà dans les dossiers judiciaires");
+                    return;
+                }
+            }
+
+            var entity = new EntiteDJ
+            {
+                IdBureauOrdre          = string.IsNullOrWhiteSpace(serialNumber) ? null : serialNumber.Trim(),
+                DateArchivage          = date,
+                TribunalSource         = tribunalSource,
+                Sujet                  = subject,
+                Destinataire           = "محكمة الاستئناف",
+                Description            = description,
+                EtatArchive            = "Nouveau",
+                LienPdf                = "",
+                IdService              = serviceId,
+                EstTransmissible       = true,
+                EstArchive             = false,
+                EstDocumentLie         = false,
+                ParentJudiciaireId     = null,
+                NumeroPremiereInstance = string.IsNullOrWhiteSpace(numeroPremiereInstance) ? null : numeroPremiereInstance.Trim()
+            };
+
+            _context.EntitesDJs.Add(entity);
+            await _context.SaveChangesAsync();
+        }
+
+        private async Task ImportJudiciaireLinked(IXLRow row, List<string> errors, int serviceId,
+            string subject, string parentIdStr, string dateStr, string description)
+        {
+            if (string.IsNullOrWhiteSpace(subject))
+                errors.Add("الموضوع est obligatoire");
+
+            if (!int.TryParse(parentIdStr, out int parentId) || parentId <= 0)
+                errors.Add($"معرف الملف الأصلي (ID parent) invalide: '{parentIdStr}'");
+
+            if (!TryParseDate(dateStr, out DateTime date))
+                errors.Add($"التاريخ invalide: '{dateStr}'");
+
+            if (errors.Any()) return;
+
+            var parent = await _context.EntitesDJs.FirstOrDefaultAsync(e => e.Id == parentId);
+            if (parent == null)
+            {
+                errors.Add($"الملف الأصلي (ID={parentId}) غير موجود");
+                return;
+            }
+
+            var entity = new EntiteDJ
+            {
+                IdBureauOrdre      = null,
+                DateArchivage      = date,
+                TribunalSource     = parent.TribunalSource,
+                Sujet              = subject,
+                Destinataire       = "محكمة الاستئناف",
+                Description        = description,
+                EtatArchive        = "Nouveau",
+                LienPdf            = "",
+                IdService          = serviceId,
+                EstTransmissible   = true,
+                EstArchive         = false,
+                EstDocumentLie     = true,
+                ParentJudiciaireId = parentId
+            };
+            _context.EntitesDJs.Add(entity);
+            await _context.SaveChangesAsync();
+        }
+
+        private static bool TryParseDate(string raw, out DateTime result)
+        {
+            result = DateTime.Now;
+            if (string.IsNullOrWhiteSpace(raw)) return false;
+
+            var formats = new[]
+            {
+                "dd/MM/yyyy", "d/M/yyyy", "dd/MM/yy",
+                "yyyy-MM-dd", "MM/dd/yyyy", "d/MM/yyyy"
+            };
+            return DateTime.TryParseExact(raw, formats,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out result)
+                || DateTime.TryParse(raw, out result);
         }
 
         // ================== PRIVATE HELPERS ==================
@@ -422,7 +887,8 @@ public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? dat
                     EstTransmissible = e.EstTransmissible,
                     IdService = e.IdService,
                     ServiceNom = e.Service != null ? e.Service.NomService : null,
-                    EstArchive = e.EstArchive
+                    EstArchive = e.EstArchive,
+                    Emplacement = e.Service != null ? e.Service.NomService : ""
                 });
 
             var judiciaires = _context.EntitesDJs
@@ -447,7 +913,8 @@ public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? dat
                     EstTransmissible = e.EstTransmissible,
                     IdService = e.IdService,
                     ServiceNom = e.Service != null ? e.Service.NomService : null,
-                    EstArchive = e.EstArchive
+                    EstArchive = e.EstArchive,
+                    Emplacement = e.Service != null ? e.Service.NomService : ""
                 });
 
             return administratifs.Concat(judiciaires);
@@ -473,7 +940,9 @@ public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? dat
             numeroDeCourrier = u.NumeroDeCourrier,
             estTransmissible = u.EstTransmissible,
             idService = u.IdService,
-            serviceNom = u.ServiceNom
+            serviceNom = u.ServiceNom,
+            hasTransaction = false,
+            emplacement = u.Emplacement
         };
 
         private IQueryable<Entite> BaseQuery() => _context.Entites.Include(e => e.Service).Where(e => e.TypeDocument == TypeDocumentAdministratif);
@@ -531,13 +1000,9 @@ public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? dat
             var direction = NormalizeDirection(request.Direction);
             var idBureauOrdre = (request.IdBureauOrdre ?? string.Empty).Trim();
 
-            // Reply – skip uniqueness checks
             if (request.ParentId.HasValue && request.ParentId.Value > 0)
-            {
                 return (idBureauOrdre, request.ParentId.Value, direction, typeCorrespondance);
-            }
 
-            // Standalone – must be unique
             if (string.IsNullOrEmpty(idBureauOrdre))
                 throw new InvalidOperationException("Le numéro de bureau d'ordre est obligatoire pour un enregistrement principal.");
 
@@ -573,12 +1038,19 @@ public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? dat
         private async Task<IActionResult?> ValidateRequest(CourrierAdministratifRequest request)
         {
             bool isStandalone = !request.ParentId.HasValue || request.ParentId.Value <= 0;
-            if (isStandalone && string.IsNullOrWhiteSpace(request.IdBureauOrdre))
-                return BadRequest("Le numéro de bureau d'ordre est obligatoire pour un enregistrement principal.");
+
+            var userName = User.Identity?.Name;
+            var currentUser = await _context.Utilisateurs.FirstOrDefaultAsync(u => u.Login == userName);
+            bool isGreffier = currentUser?.Role == "Greffier";
+
+            if (isStandalone && isGreffier && string.IsNullOrWhiteSpace(request.IdBureauOrdre))
+                return BadRequest("Le numéro de bureau d'ordre est obligatoire pour le greffier.");
+
             if (request.Date == default) return BadRequest("Date obligatoire.");
             if (string.IsNullOrWhiteSpace(request.Sujet)) return BadRequest("Sujet obligatoire.");
             if (request.IdService <= 0) return BadRequest("Service obligatoire.");
-            if (!await _context.Services.AnyAsync(s => s.IdService == request.IdService)) return BadRequest("Service inexistant.");
+            if (!await _context.Services.AnyAsync(s => s.IdService == request.IdService))
+                return BadRequest("Service inexistant.");
             return null;
         }
 
@@ -605,12 +1077,6 @@ public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? dat
             return query;
         }
 
-        private static bool TryReadDate(IXLCell cell, string text, out DateTime value)
-        {
-            if (cell.DataType == XLDataType.DateTime) { value = cell.GetDateTime(); return true; }
-            return DateTime.TryParse(text, out value);
-        }
-
         private static string NormalizeDirection(string? direction) =>
             direction?.Equals("Sortant", StringComparison.OrdinalIgnoreCase) == true ? "Sortant" :
             direction?.Equals("Interne", StringComparison.OrdinalIgnoreCase) == true ? "Interne" : "Entrant";
@@ -628,41 +1094,19 @@ public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? dat
             (etat?.Equals("Traite", StringComparison.OrdinalIgnoreCase) == true || etat?.Equals("Traité", StringComparison.OrdinalIgnoreCase) == true) ? "Traite" :
             (etat?.Equals("Archive", StringComparison.OrdinalIgnoreCase) == true || etat?.Equals("Archivé", StringComparison.OrdinalIgnoreCase) == true) ? "Archive" : "Nouveau";
 
-        private static string FromArabicEtat(string? etat) =>
-            etat switch
-            {
-                "جديد" => "Nouveau",
-                "قيد المعالجة" => "En cours",
-                "تمت المعالجة" => "Traite",
-                "مؤرشف" => "Archive",
-                _ => etat ?? string.Empty
-            };
-
-        private static string ToArabicEtat(string? etat) =>
-            etat switch
-            {
-                "En cours" => "قيد المعالجة",
-                "Traite" => "تمت المعالجة",
-                "Archive" => "مؤرشف",
-                _ => "جديد"
-            };
-
         private static TypeEntite GetTypeGenerale(string direction) =>
             direction == "Sortant" ? TypeEntite.CourrierSortant : direction == "Interne" ? TypeEntite.Interne : TypeEntite.CourrierEntrant;
 
-        private static string FormatCorrespondanceFromUnified(UnifiedCourrier c)
+        private async Task<int> GetArchivesServiceId()
         {
-            var parts = new List<string>();
-            if (c.DateCreation != default) parts.Add(c.DateCreation.ToString("dd/MM/yyyy"));
-            if (!string.IsNullOrWhiteSpace(c.Source)) parts.Add($"المصدر: {c.Source}");
-            if (!string.IsNullOrWhiteSpace(c.Destinataire)) parts.Add($"المرسل إليه: {c.Destinataire}");
-            if (!string.IsNullOrWhiteSpace(c.Sujet)) parts.Add($"الموضوع/الجواب: {c.Sujet}");
-            if (!string.IsNullOrWhiteSpace(c.Description)) parts.Add($"النتيجة: {c.Description}");
-            return string.Join(" | ", parts);
+            var archivesService = await _context.Services
+                .FirstOrDefaultAsync(s => s.NomService == "الحفظ" || s.NomService == "Archives");
+            if (archivesService == null)
+                throw new InvalidOperationException("Service 'الحفظ' not found. Please create it first.");
+            return archivesService.IdService;
         }
     }
 
-    // DTOs
     public class CourrierAdministratifRequest
     {
         public string? IdBureauOrdre { get; set; }
@@ -676,7 +1120,7 @@ public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? dat
         public string? Direction { get; set; }
         public string? TypeRegistre { get; set; }
         public string? TypeCorrespondance { get; set; }
-        public int? ParentId { get; set; }      // ← for replies
+        public int? ParentId { get; set; }
         public int IdService { get; set; }
         public string? NumeroDeCourrier { get; set; }
         public bool EstTransmissible { get; set; }
@@ -703,5 +1147,6 @@ public async Task<IActionResult> GetAll(string? numeroBureauOrdre, DateTime? dat
         public int IdService { get; set; }
         public string? ServiceNom { get; set; }
         public bool EstArchive { get; set; }
+        public string Emplacement { get; set; } = "";
     }
 }

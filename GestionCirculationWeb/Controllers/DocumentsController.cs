@@ -20,79 +20,91 @@ namespace GestionCourrier.Controllers
             return claim != null ? int.Parse(claim) : 0;
         }
 
-        [HttpGet]
+[HttpGet]
 public async Task<IActionResult> GetDocumentsForCurrentService()
 {
     var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
     if (user == null) return Unauthorized();
 
     var serviceIds = new HashSet<int> { user.IdService };
-
-    var substitutedServiceIds = await _context.Utilisateurs
+    var substituted = await _context.Utilisateurs
         .Where(u => u.SubstituteUserId == user.Id)
         .Select(u => u.IdService)
-        .Distinct()
         .ToListAsync();
+    foreach (var id in substituted) serviceIds.Add(id);
 
-    foreach (var id in substitutedServiceIds)
-        serviceIds.Add(id);
+    var result = new List<object>();
 
-    // ----- ADMINISTRATIF -----
+    // Administrative
     var admins = await _context.Entites
         .Where(e => serviceIds.Contains(e.IdService) && !e.EstArchive && e.EstTransmissible)
-        .Select(e => new
+        .ToListAsync();
+
+    foreach (var e in admins)
+    {
+        bool hasTx = await _context.Transactions
+            .AnyAsync(t => t.DocumentId == e.IdEntite && t.DocumentType == "Administratif" && t.Statut != "Annulé");
+        result.Add(new
         {
-            e.IdEntite,
+            idEntite = e.IdEntite,
             e.Sujet,
-            DateCreation = e.DateCreation,
+            dateCreation = e.DateCreation,
             e.Source,
             e.Destinataire,
-            Type = "Administratif",
+            type = "Administratif",
             e.IdService,
             e.IdBureauOrdre,
             e.Etat,
             e.Description,
             e.LienPdf,
             isSubstitute = e.IdService != user.IdService,
-            NumeroCourrier = string.IsNullOrWhiteSpace(e.IdBureauOrdre) ? e.NumeroDeCourrier : e.IdBureauOrdre,
-            NumeroDossierJudiciaire = (string?)null
-        })
-        .ToListAsync();
+            numeroCourrier = string.IsNullOrWhiteSpace(e.IdBureauOrdre) ? e.NumeroDeCourrier : e.IdBureauOrdre,
+            estTransmissible = e.EstTransmissible,
+            hasTransaction = hasTx
+        });
+    }
 
-    // ----- JUDICIAIRE -----
+    // Judicial
     var juds = await _context.EntitesDJs
         .Where(e => serviceIds.Contains(e.IdService) && !e.EstArchive && e.EstTransmissible)
-        .Select(e => new
+        .Include(e => e.NumeroDossier)
+        .ToListAsync();
+
+    foreach (var e in juds)
+    {
+        bool hasTx = await _context.Transactions
+            .AnyAsync(t => t.DocumentId == e.Id && t.DocumentType == "Judiciaire" && t.Statut != "Annulé");
+        result.Add(new
         {
-            IdEntite = e.Id,
+            idEntite = e.Id,
             e.Sujet,
-            DateCreation = e.DateArchivage,
-            Source = e.TribunalSource,
+            dateCreation = e.DateArchivage,
+            source = e.TribunalSource,
             e.Destinataire,
-            Type = "Judiciaire",
+            type = "Judiciaire",
             e.IdService,
             e.IdBureauOrdre,
-            Etat = e.EtatArchive,
+            etat = e.EtatArchive,
             e.Description,
             e.LienPdf,
             isSubstitute = e.IdService != user.IdService,
-            NumeroCourrier = e.IdBureauOrdre,
-            NumeroDossierJudiciaire = e.NumeroDossier != null
+            numeroCourrier = e.IdBureauOrdre,
+            estTransmissible = e.EstTransmissible,
+            hasTransaction = hasTx,
+            numeroDossierJudiciaire = e.NumeroDossier != null
                 ? $"{e.NumeroDossier.Annee}/{e.NumeroDossier.Nombre}/{e.NumeroDossier.NumeroSujet}"
-                : null,
-            NumeroPremiereInstance = e.NumeroPremiereInstance
-        })
-        .ToListAsync();
+                : null
+        });
+    }
 
-    var result = admins.Cast<object>().Concat(juds.Cast<object>());
     return Ok(result);
 }
+
         [HttpGet("{id}")]
         public async Task<IActionResult> GetDocumentById(int id, [FromQuery] string type)
         {
             if (type == "Administratif")
             {
-                // Return the full Entite entity with its Service
                 var doc = await _context.Entites
                     .Include(e => e.Service)
                     .FirstOrDefaultAsync(e => e.IdEntite == id);
@@ -101,7 +113,6 @@ public async Task<IActionResult> GetDocumentsForCurrentService()
             }
             else if (type == "Judiciaire")
             {
-                // Return the full EntiteDJ entity with its Service, NumeroDossier and Retraits
                 var doc = await _context.EntitesDJs
                     .Include(e => e.Service)
                     .Include(e => e.NumeroDossier)

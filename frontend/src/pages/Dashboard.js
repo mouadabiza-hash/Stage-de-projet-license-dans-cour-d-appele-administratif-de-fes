@@ -19,7 +19,6 @@ function Dashboard() {
   const [showDocModal, setShowDocModal] = useState(false);
   const [currentDocument, setCurrentDocument] = useState(null);
 
-  // modal states
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [showCompletedModal, setShowCompletedModal] = useState(false);
   const [showReturnsModal, setShowReturnsModal] = useState(false);
@@ -30,8 +29,6 @@ function Dashboard() {
   const [judicialSearch, setJudicialSearch] = useState('');
   const [judicialRowsPerPage, setJudicialRowsPerPage] = useState(10);
   const [judicialCurrentPage, setJudicialCurrentPage] = useState(1);
-
-  // response text for each notification
   const [incomingReply, setIncomingReply] = useState({});
 
   useEffect(() => {
@@ -182,181 +179,73 @@ function Dashboard() {
       </div>
       <div className="data-table-wrapper">
         <table className="modern-table">
-          <thead>
-            <tr>
-              <th>{t('titre')}</th>
-              <th>{t('tribunal_source')}</th>
-              <th>{t('numero_dossier')}</th>
-              <th>{t('date')}</th>
-              <th>{t('etat')}</th>
-              <th>{t('actions')}</th>
-            </tr>
-          </thead>
+          <thead><tr><th>{t('titre')}</th><th>{t('tribunal_source')}</th><th>{t('numero_dossier')}</th><th>{t('date')}</th><th>{t('etat')}</th><th>{t('actions')}</th></tr></thead>
           <tbody>
-            {currentJudicial.length === 0 ? (
-              <tr><td colSpan="6">{t('aucun_dossier_judiciaire')}</td></tr>
-            ) : (
-              currentJudicial.map(doc => (
-                <tr key={doc.id}>
-                  <td>{doc.sujet || '-'}</td>
-                  <td>{doc.tribunalSource || '-'}</td>
-                  <td>{doc.numeroDossier || '-'}</td>
-                  <td>{formatDate(doc.date, locale)}</td>
-                  <td>{formatEtat(doc.etatArchive)}</td>
-                  <td className="action-icons">
-                    <button className="btn-primary" onClick={() => handleConsult(doc)}>{t('consulter')}</button>
-                  </td>
-                </tr>
-              ))
-            )}
+            {currentJudicial.length === 0 ? <tr><td colSpan="6">{t('aucun_dossier_judiciaire')}</td></tr> : currentJudicial.map(doc => (
+              <tr key={doc.id}><td>{doc.sujet || '-'}</td><td>{doc.tribunalSource || '-'}</td><td>{doc.numeroDossier || '-'}</td><td>{formatDate(doc.date, locale)}</td><td>{formatEtat(doc.etatArchive)}</td><td className="action-icons"><button className="btn-primary" onClick={() => handleConsult(doc)}>{t('consulter')}</button></td></tr>
+            ))}
           </tbody>
         </table>
-        {totalJudicialPages > 1 && (
-          <div className="pagination">
-            <button onClick={() => handleJudicialPageChange(judicialCurrentPage - 1)} disabled={judicialCurrentPage === 1}>{t('precedent')}</button>
-            <span>{t('page')} {judicialCurrentPage} / {totalJudicialPages}</span>
-            <button onClick={() => handleJudicialPageChange(judicialCurrentPage + 1)} disabled={judicialCurrentPage === totalJudicialPages}>{t('suivant')}</button>
-          </div>
-        )}
+        {totalJudicialPages > 1 && <div className="pagination"><button onClick={() => handleJudicialPageChange(judicialCurrentPage - 1)} disabled={judicialCurrentPage === 1}>{t('precedent')}</button><span>{t('page')} {judicialCurrentPage} / {totalJudicialPages}</span><button onClick={() => handleJudicialPageChange(judicialCurrentPage + 1)} disabled={judicialCurrentPage === totalJudicialPages}>{t('suivant')}</button></div>}
       </div>
 
-      {/* ========== CLICKABLE CARDS ========== */}
-
-      {/* Incoming notifications card */}
-      <div className="dashboard-section-card" onClick={() => setShowNotificationsModal(true)}>
-        <div className="section-title-text"><span>🔔</span> {t('notifications')}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <span className="section-badge">{incoming.length}</span>
-          <span className="arrow-icon">→</span>
-        </div>
-      </div>
-
-      {/* Outgoing pending modal */}
-      <div className="dashboard-section-card" onClick={() => setShowPendingModal(true)}>
-        <div className="section-title-text"><span>⏳</span> {t('demandes_attente')}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}><span className="section-badge">{pending.length}</span><span className="arrow-icon">→</span></div>
-      </div>
-
-      {/* Completed modal */}
-      <div className="dashboard-section-card" onClick={() => setShowCompletedModal(true)}>
-        <div className="section-title-text"><span>✅</span> {t('transactions_traitees')}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}><span className="section-badge">{completed.length}</span><span className="arrow-icon">→</span></div>
-      </div>
-
-      {/* Pending returns modal */}
+      {/* CLICKABLE CARDS */}
+      <div className="dashboard-section-card" onClick={() => setShowNotificationsModal(true)}><div className="section-title-text"><span>🔔</span> {t('notifications')}</div><div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}><span className="section-badge">{incoming.length}</span><span className="arrow-icon">→</span></div></div>
+      <div className="dashboard-section-card" onClick={() => setShowPendingModal(true)}><div className="section-title-text"><span>⏳</span> {t('demandes_attente')}</div><div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}><span className="section-badge">{pending.length}</span><span className="arrow-icon">→</span></div></div>
+      <div className="dashboard-section-card" onClick={() => setShowCompletedModal(true)}><div className="section-title-text"><span>✅</span> {t('transactions_traitees')}</div><div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}><span className="section-badge">{completed.length}</span><span className="arrow-icon">→</span></div></div>
+      {/* PENDING RETURNS CARD – this shows the number of documents to return */}
       <div className="dashboard-section-card" onClick={() => setShowReturnsModal(true)}>
         <div className="section-title-text"><span>🔄</span> {t('documents_retourner')}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}><span className="section-badge">{pendingReturns.length}</span><span className="arrow-icon">→</span></div>
       </div>
 
-      {/* ---------- MODALS ---------- */}
-
-      {/* Notifications modal (incoming requests) */}
+      {/* MODALS */}
       {showNotificationsModal && (
         <div className="modal-overlay" onClick={() => setShowNotificationsModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="registry-panel-header">
-              <h3>{t('notifications')}</h3>
-              <button className="btn-secondary" onClick={() => setShowNotificationsModal(false)}>{t('fermer')}</button>
-            </div>
-            {incoming.length === 0 ? (
-              <p className="text-muted">{t('aucune_notification')}</p>
-            ) : (
-              <div className="notifications-list">
-                {incoming.map(n => (
-                  <div key={n.id} className="notification-card">
-                    <div className="notification-header">
-                      <div className="notification-header-left">
-                        <span className="notification-title">{n.documentSujet}</span>
-                      </div>
-                      <span className="notification-badge">{t('en_attente')}</span>
-                    </div>
-                    <div className="notification-identifiers">
-                      {n.numeroCourrier && <span className="identifier-tag">📨 {n.numeroCourrier}</span>}
-                      {n.numeroDossierJudiciaire && <span className="identifier-tag">⚖️ {n.numeroDossierJudiciaire}</span>}
-                    </div>
-                    <div className="notification-details">
-                      <div className="detail-row"><span className="detail-label">{t('de')} :</span> <span>{n.sourceServiceNom}</span></div>
-                      {n.message && <div className="detail-row"><span className="detail-label">{t('message')} :</span> <span>{n.message}</span></div>}
-                    </div>
-                    <textarea
-                      className="response-textarea"
-                      placeholder={t('votre_reponse')}
-                      value={incomingReply[n.id] || ''}
-                      onChange={e => setIncomingReply({ ...incomingReply, [n.id]: e.target.value })}
-                      rows="2"
-                    />
-                    <div className="notification-actions">
-                      <button className="btn-primary" onClick={() => handleIncomingRespond(n.id, true)}>{t('accepter')}</button>
-                      <button className="btn-secondary" onClick={() => handleIncomingRespond(n.id, false)}>{t('refuser')}</button>
-                    </div>
-                  </div>
-                ))}
+            <div className="registry-panel-header"><h3>{t('notifications')}</h3><button className="btn-secondary" onClick={() => setShowNotificationsModal(false)}>{t('fermer')}</button></div>
+            {incoming.length === 0 ? <p className="text-muted">{t('aucune_notification')}</p> : incoming.map(n => (
+              <div key={n.id} className="notification-card">
+                <div className="notification-header"><div className="notification-header-left"><span className="notification-title">{n.documentSujet}</span></div><span className="notification-badge">{t('en_attente')}</span></div>
+                <div className="notification-identifiers">{n.numeroCourrier && <span className="identifier-tag">📨 {n.numeroCourrier}</span>}{n.numeroDossierJudiciaire && <span className="identifier-tag">⚖️ {n.numeroDossierJudiciaire}</span>}</div>
+                <div className="notification-details"><div className="detail-row"><span className="detail-label">{t('de')} :</span> <span>{n.sourceServiceNom}</span></div>{n.message && <div className="detail-row"><span className="detail-label">{t('message')} :</span> <span>{n.message}</span></div>}</div>
+                <textarea className="response-textarea" placeholder={t('votre_reponse')} value={incomingReply[n.id] || ''} onChange={e => setIncomingReply({ ...incomingReply, [n.id]: e.target.value })} rows="2" />
+                <div className="notification-actions"><button className="btn-primary" onClick={() => handleIncomingRespond(n.id, true)}>{t('accepter')}</button><button className="btn-secondary" onClick={() => handleIncomingRespond(n.id, false)}>{t('refuser')}</button></div>
               </div>
-            )}
+            ))}
           </div>
         </div>
       )}
 
-      {/* Outgoing pending modal (unchanged) */}
       {showPendingModal && (
         <div className="modal-overlay" onClick={() => setShowPendingModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="registry-panel-header">
-              <h3>{t('demandes_attente')}</h3>
-              <button className="btn-secondary" onClick={() => setShowPendingModal(false)}>{t('fermer')}</button>
-            </div>
-            <div className="transaction-list">
-              {pending.length === 0 ? <p className="text-muted">{t('aucune_demande')}</p> : pending.map(tx => (
-                <TransactionItem key={tx.id} tx={tx} badge={t('en_attente')} locale={locale} t={t}
-                  actions={[
-                    <button key="consult" onClick={() => handleConsult({ id: tx.documentId, documentType: tx.documentType })}>{t('consulter')}</button>,
-                    <button key="cancel" onClick={() => handleCancelOutgoing(tx.id)}>{t('annuler')}</button>
-                  ]}
-                />
-              ))}
-            </div>
+            <div className="registry-panel-header"><h3>{t('demandes_attente')}</h3><button className="btn-secondary" onClick={() => setShowPendingModal(false)}>{t('fermer')}</button></div>
+            <div className="transaction-list">{pending.length === 0 ? <p className="text-muted">{t('aucune_demande')}</p> : pending.map(tx => <TransactionItem key={tx.id} tx={tx} badge={t('en_attente')} locale={locale} t={t} actions={[<button key="consult" onClick={() => handleConsult({ id: tx.documentId, documentType: tx.documentType })}>{t('consulter')}</button>, <button key="cancel" onClick={() => handleCancelOutgoing(tx.id)}>{t('annuler')}</button>]} />)}</div>
           </div>
         </div>
       )}
 
-      {/* Completed modal (unchanged) */}
       {showCompletedModal && (
         <div className="modal-overlay" onClick={() => setShowCompletedModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="registry-panel-header">
-              <h3>{t('transactions_traitees')}</h3>
-              <button className="btn-secondary" onClick={() => setShowCompletedModal(false)}>{t('fermer')}</button>
-            </div>
-            <div className="transaction-list">
-              {completed.length === 0 ? <p className="text-muted">{t('aucune_transaction')}</p> : completed.map(tx => (
-                <TransactionItem key={tx.id} tx={tx} badge={translateStatus(tx.statut, t)} locale={locale} t={t}
-                  note={tx.messageReponse || t('non_renseigne')} date={tx.dateReponse} dateLabel={t('traite_le')}
-                  actions={[
-                    <button key="consult" onClick={() => handleConsult({ id: tx.documentId, documentType: tx.documentType })}>{t('consulter')}</button>,
-                    <button key="hide" onClick={() => handleHide(tx.id)}>{t('masquer')}</button>
-                  ]}
-                />
-              ))}
-            </div>
+            <div className="registry-panel-header"><h3>{t('transactions_traitees')}</h3><button className="btn-secondary" onClick={() => setShowCompletedModal(false)}>{t('fermer')}</button></div>
+            <div className="transaction-list">{completed.length === 0 ? <p className="text-muted">{t('aucune_transaction')}</p> : completed.map(tx => <TransactionItem key={tx.id} tx={tx} badge={translateStatus(tx.statut, t)} locale={locale} t={t} note={tx.messageReponse || t('non_renseigne')} date={tx.dateReponse} dateLabel={t('traite_le')} actions={[<button key="consult" onClick={() => handleConsult({ id: tx.documentId, documentType: tx.documentType })}>{t('consulter')}</button>, <button key="hide" onClick={() => handleHide(tx.id)}>{t('masquer')}</button>]} />)}</div>
           </div>
         </div>
       )}
 
-      {/* Pending returns modal (unchanged) */}
+      {/* PENDING RETURNS MODAL – with Revenir button */}
       {showReturnsModal && (
         <div className="modal-overlay" onClick={() => setShowReturnsModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="registry-panel-header">
-              <h3>{t('documents_retourner')}</h3>
-              <button className="btn-secondary" onClick={() => setShowReturnsModal(false)}>{t('fermer')}</button>
-            </div>
+            <div className="registry-panel-header"><h3>{t('documents_retourner')}</h3><button className="btn-secondary" onClick={() => setShowReturnsModal(false)}>{t('fermer')}</button></div>
             <div className="transaction-list">
               {pendingReturns.length === 0 ? <p className="text-muted">{t('aucun_document_retour')}</p> : pendingReturns.map(tx => (
                 <TransactionItem key={tx.id} tx={tx} badge={t('en_attente_retour')} locale={locale} t={t}
                   actions={[
                     <button key="consult" onClick={() => handleConsult({ id: tx.documentId, documentType: tx.documentType })}>{t('consulter')}</button>,
-                    <button key="return" onClick={() => handleMarkReturned(tx.id)}>{t('marquer_retourne')}</button>
+                    <button key="return" onClick={() => handleMarkReturned(tx.id)}>{t('marquer_retourne')}</button>  // ← Revenir button
                   ]}
                 />
               ))}

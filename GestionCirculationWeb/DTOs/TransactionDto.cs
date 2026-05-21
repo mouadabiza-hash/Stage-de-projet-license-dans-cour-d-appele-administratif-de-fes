@@ -1,14 +1,14 @@
 namespace GestionCourrier.DTOs
 {
-    public class DemandeTransactionDto
-    {
-        public int DocumentId { get; set; }
-        public string DocumentType { get; set; } = string.Empty;
-        public int DestinationServiceId { get; set; }
-        public int? DestinationUserId { get; set; }
-        public bool DoitRevenir { get; set; }
-        public string Message { get; set; } = string.Empty;
-    }
+public class DemandeTransactionDto
+{
+    public int DocumentId { get; set; }
+    public string DocumentType { get; set; } = string.Empty;
+    public int? DestinationServiceId { get; set; }
+    public int? DestinationUserId { get; set; }
+    public bool DoitRevenir { get; set; }
+    public string Message { get; set; } = string.Empty;
+}
 
     public class ReponseTransactionDto
     {
@@ -31,4 +31,12 @@ namespace GestionCourrier.DTOs
         public string Message { get; set; } = string.Empty;
         public string? MessageReponse { get; set; }
     }
+    public class BatchTransactionDto
+{
+    public int DocumentId { get; set; }
+    public string DocumentType { get; set; } = string.Empty;
+    public List<int> DestinationUserIds { get; set; } = new List<int>();
+    public bool DoitRevenir { get; set; }
+    public string Message { get; set; } = string.Empty;
+}
 }

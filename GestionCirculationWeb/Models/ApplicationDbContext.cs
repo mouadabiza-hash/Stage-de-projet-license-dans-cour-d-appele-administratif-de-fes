@@ -20,6 +20,7 @@ namespace GestionCourrier.Models
         public DbSet<Equipment> Equipements { get; set; }
         public DbSet<Utilisateur> Utilisateurs { get; set; }
         public DbSet<Id> Ids { get; set; }
+        public DbSet<ListItem> ListItems { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

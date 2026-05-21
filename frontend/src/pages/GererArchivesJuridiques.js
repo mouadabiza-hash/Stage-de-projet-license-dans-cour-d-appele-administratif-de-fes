@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 import { usePermissions } from '../hooks/usePermissions';
 
 function GererArchivesJuridiques() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language;
   const perms = usePermissions();
   const canManageRetraits = perms.canArchive;
 
@@ -18,6 +19,9 @@ function GererArchivesJuridiques() {
   const [retraitForm, setRetraitForm] = useState(getInitialRetraitForm());
   const userModifiedRetraitDate = useRef(false);
 
+  // Dynamic list for document states (for displaying translated état)
+  const [documentStates, setDocumentStates] = useState([]);
+
   // ----- Import state (archive-existing) -----
   const [importFile, setImportFile] = useState(null);
   const [headers, setHeaders] = useState([]);
@@ -26,6 +30,19 @@ function GererArchivesJuridiques() {
     colCabinet: '',
   });
   const [showMapping, setShowMapping] = useState(false);
+
+  // Fetch document states on mount
+  useEffect(() => {
+    const fetchStates = async () => {
+      try {
+        const res = await axios.get('/api/ListItems?listName=DocumentState');
+        setDocumentStates(res.data.sort((a, b) => a.displayOrder - b.displayOrder));
+      } catch (err) {
+        console.error('Failed to load document states', err);
+      }
+    };
+    fetchStates();
+  }, []);
 
   useEffect(() => {
     const timeout = setTimeout(fetchArchives, 250);
@@ -49,7 +66,14 @@ function GererArchivesJuridiques() {
     }
   };
 
-  // ========== RETRAIT HANDLERS ==========
+  // Helper to get translated état
+  const getEtatDisplay = (code) => {
+    const state = documentStates.find(s => s.code === code);
+    if (!state) return code;
+    return locale === 'ar' ? state.valueAr : state.valueFr;
+  };
+
+  // ========== RETRAIT HANDLERS (unchanged) ==========
   const handleRetraitChange = (e) => {
     const { name, value } = e.target;
     setRetraitForm((prev) => ({ ...prev, [name]: value }));
@@ -99,7 +123,7 @@ function GererArchivesJuridiques() {
         dateDeRetrait: retraitForm.dateDeRetrait
           ? new Date(retraitForm.dateDeRetrait).toISOString()
           : new Date().toISOString(),
-        dateDeRetour: null, // always null on creation
+        dateDeRetour: null,
         motifDeRetrait: retraitForm.motifDeRetrait.trim(),
         effectuePar: retraitForm.effectuePar.trim(),
         notes: retraitForm.notes.trim(),
@@ -155,7 +179,7 @@ function GererArchivesJuridiques() {
     setPanelSuccess("");
   };
 
-  // ========== IMPORT (ARCHIVE EXISTING) HANDLERS ==========
+  // ========== IMPORT HANDLERS (unchanged) ==========
   const handleImportFileSelect = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -166,39 +190,42 @@ function GererArchivesJuridiques() {
       const res = await axios.post('/api/acteursjudiciaires/import-archive/preview', formData);
       setHeaders(res.data);
       setShowMapping(true);
-      setMapping({ colIdentifiant: '', colCabinet: '', colEmplacement: '' });
+      setMapping({ colIdentifiant: '', colCabinet: '', colEmplacement: '', colDateArchivage: '' }); 
     } catch (err) {
       setGlobalError(t('erreur_lecture_fichier'));
     }
   };
 
   const executeImport = async () => {
-    if (!importFile) return;
-    const formData = new FormData();
-    formData.append('file', importFile);
-    const params = new URLSearchParams({
-      colIdentifiant: mapping.colIdentifiant,
-      colCabinet: mapping.colCabinet || '',
-      colEmplacement: mapping.colEmplacement || ''
-    });
-    try {
-      const res = await axios.post(`/api/acteursjudiciaires/import-archive/execute?${params.toString()}`, formData);
-      const data = res.data;
-      let msg = `${data.archived} dossier(s) archivé(s).`;
-      if (data.errors && data.errors.length > 0) {
-        msg += `\n\n${t('details_erreurs')} :\n${data.errors.join('\n')}`;
-      }
-      alert(msg);
-      if (data.archived > 0) fetchArchives();
-      setShowMapping(false);
-      setImportFile(null);
-      setMapping({ colIdentifiant: '', colCabinet: '', colEmplacement: '' });
-    } catch (err) {
-      setGlobalError(t('erreur_import'));
-    }
-  };
+  if (!importFile) return;
+  const formData = new FormData();
+  formData.append('file', importFile);
+  const params = new URLSearchParams({
+    colIdentifiant:    mapping.colIdentifiant,
+    colCabinet:        mapping.colCabinet        || '',
+    colEmplacement:    mapping.colEmplacement    || '',
+    colDateArchivage:  mapping.colDateArchivage  || '',
+  });
+  try {
+    const res = await axios.post(
+      `/api/acteursjudiciaires/import-archive/execute?${params.toString()}`,
+      formData
+    );
+    const data = res.data;
+    let msg = `${data.archived} dossier(s) archivé(s).`;
+    if (data.errors?.length > 0)
+      msg += `\n\n${t('details_erreurs')} :\n${data.errors.join('\n')}`;
+    alert(msg);
+    if (data.archived > 0) fetchArchives();
+    setShowMapping(false);
+    setImportFile(null);
+    setMapping({ colIdentifiant: '', colCabinet: '', colEmplacement: '', colDateArchivage: '' });
+  } catch (err) {
+    setGlobalError(t('erreur_import'));
+  }
+};
 
-  // ========== EXPORT (ARCHIVES) ==========
+  // ========== EXPORT (unchanged) ==========
   const exportToExcel = () => {
     fetch("/api/acteursjudiciaires/export/archives", {
       headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -261,31 +288,67 @@ function GererArchivesJuridiques() {
 
         {/* Column mapping panel for archive import */}
         {showMapping && (
-          <div className="mapping-panel">
-            <h4>{t('associer_colonnes')}</h4>
-            <div className="form-grid">
-              <div className="form-field">
-                <label>{t('colonne_identifiant') || 'Colonne Identifiant'} *</label>
-                <select value={mapping.colIdentifiant} onChange={e => setMapping({...mapping, colIdentifiant: e.target.value})}>
-                  <option value="">-- {t('choisir')} --</option>
-                  {headers.map(h => <option key={h}>{h}</option>)}
-                </select>
-                <small>{t('identifiant_hint') || 'رقم الاستنافي أو رقم مكتب الضبط'}</small>
-              </div>
-              <div className="form-field">
-                <label>{t('colonne_cabinet') || 'Colonne الخزانة'} ({t('optionnel')})</label>
-                <select value={mapping.colCabinet} onChange={e => setMapping({...mapping, colCabinet: e.target.value})}>
-                  <option value="">-- {t('choisir')} --</option>
-                  {headers.map(h => <option key={h}>{h}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="form-actions">
-              <button className="btn-primary" onClick={executeImport}>{t('importer')}</button>
-              <button className="btn-secondary" onClick={() => setShowMapping(false)}>{t('annuler')}</button>
-            </div>
-          </div>
-        )}
+  <div className="mapping-panel">
+    <h4>{t('associer_colonnes')}</h4>
+    <div className="form-grid">
+
+      {/* Identifiant — required */}
+      <div className="form-field">
+        <label>{t('colonne_identifiant') || 'Colonne Identifiant'} *</label>
+        <select
+          value={mapping.colIdentifiant}
+          onChange={e => setMapping({ ...mapping, colIdentifiant: e.target.value })}
+        >
+          <option value="">-- {t('choisir')} --</option>
+          {headers.map(h => <option key={h} value={h}>{h}</option>)}
+        </select>
+        <small>{t('identifiant_hint') || 'رقم الاستئنافي أو رقم مكتب الضبط'}</small>
+      </div>
+
+      {/* Date archivage — optional */}
+      <div className="form-field">
+        <label>{t('colonne_date_archivage') || 'تاريخ الأرشفة'} ({t('optionnel')})</label>
+        <select
+          value={mapping.colDateArchivage}
+          onChange={e => setMapping({ ...mapping, colDateArchivage: e.target.value })}
+        >
+          <option value="">-- {t('choisir')} --</option>
+          {headers.map(h => <option key={h} value={h}>{h}</option>)}
+        </select>
+        <small>{t('date_archivage_hint') || 'تاريخ حفظ الملف في الأرشيف'}</small>
+      </div>
+
+      {/* Cabinet — optional */}
+      <div className="form-field">
+        <label>{t('colonne_cabinet') || 'الخزانة'} ({t('optionnel')})</label>
+        <select
+          value={mapping.colCabinet}
+          onChange={e => setMapping({ ...mapping, colCabinet: e.target.value })}
+        >
+          <option value="">-- {t('choisir')} --</option>
+          {headers.map(h => <option key={h} value={h}>{h}</option>)}
+        </select>
+      </div>
+
+      {/* Emplacement — optional */}
+      <div className="form-field">
+        <label>{t('colonne_emplacement') || 'الموقع'} ({t('optionnel')})</label>
+        <select
+          value={mapping.colEmplacement}
+          onChange={e => setMapping({ ...mapping, colEmplacement: e.target.value })}
+        >
+          <option value="">-- {t('choisir')} --</option>
+          {headers.map(h => <option key={h} value={h}>{h}</option>)}
+        </select>
+      </div>
+
+    </div>
+    <div className="form-actions">
+      <button className="btn-primary"  onClick={executeImport}>{t('importer')}</button>
+      <button className="btn-secondary" onClick={() => setShowMapping(false)}>{t('annuler')}</button>
+    </div>
+  </div>
+)}
 
         <div className="data-table-wrapper">
           <table className="modern-table">
@@ -331,7 +394,7 @@ function GererArchivesJuridiques() {
         </div>
       </div>
 
-      {/* Retrait management panel – only for Admin and Archive */}
+      {/* Retrait management panel */}
       {selectedItem && canManageRetraits && (
         <div className="form-card archive-service-panel">
           <div className="registry-panel-header">
@@ -427,7 +490,7 @@ function GererArchivesJuridiques() {
   );
 }
 
-// ========== HELPERS ==========
+// Helpers (unchanged)
 function getInitialRetraitForm() {
   return {
     dateDeRetrait: new Date().toISOString().slice(0, 10),

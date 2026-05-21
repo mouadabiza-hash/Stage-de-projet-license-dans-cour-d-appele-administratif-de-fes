@@ -3,8 +3,7 @@ import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../hooks/usePermissions';
 
-const ROLES = ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe'];
-
+const ROLES = ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures','Consultant'];
 function GererUtilisateurs() {
     const { t } = useTranslation();
     const perms = usePermissions();
