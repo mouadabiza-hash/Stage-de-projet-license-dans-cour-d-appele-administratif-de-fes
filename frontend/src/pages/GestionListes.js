@@ -16,7 +16,7 @@ function GestionListes() {
 
   const listNames = [
     'EquipmentType', 'EquipmentEtat', 'JudicialType', 'TribunalType',
-    'DocumentState', 'Direction', 'CorrespondanceType'
+    'DocumentState', 'Direction', 'CorrespondanceType','Source'
   ];
 
   useEffect(() => {

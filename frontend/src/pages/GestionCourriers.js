@@ -10,6 +10,7 @@ const TYPE_JUDICIAIRE = 'judiciaire';
 const TYPE_SORTANT = 'sortant';
 
 function GestionCourriers() {
+
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const { user } = useAuth();
@@ -19,6 +20,9 @@ function GestionCourriers() {
   const isGreffier = user?.role === 'Greffier';
   const isAdmin = user?.role === 'Admin';
   const userRole = user?.role;
+
+ const [allDocs, setAllDocs] = useState([]);
+
 
   const isEnregistrement = userRole === 'Enregistrement';
   const isProcedures = userRole === 'Procedures';
@@ -43,9 +47,12 @@ function GestionCourriers() {
     if (isProcedures) return 'linked';
     return 'file';
   });
+  const [sourceOptions, setSourceOptions] = useState([]);
+  const [pdfMessage, setPdfMessage] = useState({ text: '', type: '' });
+
+  const [errorMessage, setErrorMessage] = useState({ text: '', visible: false });
 
   // ---------- data ----------
-  const [allDocs, setAllDocs] = useState([]);
   const [services, setServices] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -138,7 +145,9 @@ function GestionCourriers() {
     etat: true,
     emplacement: true,
     pdf: true,
-    actions: true
+    actions: true,
+    // reponse 
+ replyInfo: true,
   };
 
   const [selectedRowIds, setSelectedRowIds] = useState([]);
@@ -155,8 +164,14 @@ function GestionCourriers() {
     }
     return defaultColumns;
   });
-  const [showColumnMenu, setShowColumnMenu] = useState(false);
 
+  //-----------------message de succes ----------------------
+  const [successMessage, setSuccessMessage] = useState({ text: '', visible: false });
+  const [showColumnMenu, setShowColumnMenu] = useState(false);
+  // ---------- Confirmation du numero internn ----------------
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
+const [duplicateMessage, setDuplicateMessage] = useState('');
+const [pendingSubmit, setPendingSubmit] = useState(null);
   // ---------- dynamic lists ----------
   const [documentStates, setDocumentStates] = useState([]);
   const [tribunalTypes, setTribunalTypes] = useState([]);
@@ -189,15 +204,18 @@ function GestionCourriers() {
   // ---------- fetch lists ----------
   useEffect(() => {
     const fetchLists = async () => {
+    
       try {
-        const [statesRes, tribunalRes, judicialRes] = await Promise.all([
+        const [statesRes, tribunalRes, judicialRes ,sourceRes ] = await Promise.all([
           axios.get('/api/ListItems?listName=DocumentState'),
           axios.get('/api/ListItems?listName=TribunalType'),
-          axios.get('/api/ListItems?listName=JudicialType')
+          axios.get('/api/ListItems?listName=JudicialType'),
+          axios.get('/api/ListItems?listName=Source')
         ]);
         setDocumentStates(statesRes.data.sort((a, b) => a.displayOrder - b.displayOrder));
         setTribunalTypes(tribunalRes.data.sort((a, b) => a.displayOrder - b.displayOrder));
         setJudicialTypes(judicialRes.data.sort((a, b) => a.displayOrder - b.displayOrder));
+        setSourceOptions(sourceRes.data.sort((a, b) => a.displayOrder - b.displayOrder));
       } catch (err) { console.error('Failed to load lists', err); }
     };
     fetchLists();
@@ -244,12 +262,23 @@ function GestionCourriers() {
       setRepliedIds(ids);
       setError('');
     } catch (err) {
-      setError(getErrorMessage(err, t('erreur_chargement')));
+      showError(getErrorMessage(err, t('erreur_chargement')));
     } finally {
       setLoading(false);
     }
   }, [t]);
+  const showError = (text) => {
+  setErrorMessage({ text, visible: true });
+  setTimeout(() => setErrorMessage(prev => ({ ...prev, visible: false })), 6000);
+};
 
+  const showSuccess = (text) => {
+  setSuccessMessage({ text, visible: true });
+  // Auto-hide after 5 seconds
+  setTimeout(() => {
+    setSuccessMessage(prev => ({ ...prev, visible: false }));
+  }, 5000);
+};
   const fetchParentFiles = useCallback(async () => {
     try {
       const res = await axios.get('/api/acteursjudiciaires/parents');
@@ -260,25 +289,38 @@ function GestionCourriers() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const mainDocs = useMemo(() => allDocs.filter(d => !d.parentId), [allDocs]);
-  const filtered = useMemo(() => {
-    let docs = mainDocs;
-    if (filterMode === 'without') docs = docs.filter(d => !d.idBureauOrdre || d.idBureauOrdre.trim() === '');
-    else if (filterMode === 'with') docs = docs.filter(d => d.idBureauOrdre && d.idBureauOrdre.trim() !== '');
-    if (search.trim()) {
-      const kw = search.toLowerCase();
-      docs = docs.filter(d =>
-        (d.idBureauOrdre || '').toLowerCase().includes(kw) ||
-        (d.sujet || '').toLowerCase().includes(kw) ||
-        (d.source || d.tribunalSource || '').toLowerCase().includes(kw) ||
-        (d.destinataire || '').toLowerCase().includes(kw)
-      );
-    }
-    return [...docs].sort((a, b) => {
-      const numA = parseInt((a.idBureauOrdre || '').split('/')[0], 10) || Number.MAX_SAFE_INTEGER;
-      const numB = parseInt((b.idBureauOrdre || '').split('/')[0], 10) || Number.MAX_SAFE_INTEGER;
-      return numA - numB;
-    });
-  }, [mainDocs, filterMode, search]);
+const filtered = useMemo(() => {
+  let docs = mainDocs;
+  if (filterMode === 'without') docs = docs.filter(d => !d.idBureauOrdre || d.idBureauOrdre.trim() === '');
+  else if (filterMode === 'with') docs = docs.filter(d => d.idBureauOrdre && d.idBureauOrdre.trim() !== '');
+  
+  if (search.trim()) {
+    const kw = search.toLowerCase();
+    docs = docs.filter(d =>
+      (d.idBureauOrdre || '').toLowerCase().includes(kw) ||
+      (d.sujet || '').toLowerCase().includes(kw) ||
+      (d.source || d.tribunalSource || '').toLowerCase().includes(kw) ||
+      (d.destinataire || '').toLowerCase().includes(kw)
+    );
+  }
+  
+  // DESCENDING sort: largest number first
+  return [...docs].sort((a, b) => {
+    const getNum = (val) => {
+      if (!val) return -1;
+      const parts = String(val).split('/');
+      const num = parseInt(parts[0], 10);
+      return isNaN(num) ? -1 : num;
+    };
+    const numA = getNum(a.idBureauOrdre);
+    const numB = getNum(b.idBureauOrdre);
+    // Items without idBureauOrdre go to the bottom
+    if (numA === -1 && numB === -1) return 0;
+    if (numA === -1) return 1;
+    if (numB === -1) return -1;
+    return numB - numA; // descending
+  });
+}, [mainDocs, filterMode, search]);
 
   const idxLast = page * rowsPerPage;
   const idxFirst = idxLast - rowsPerPage;
@@ -304,39 +346,55 @@ function GestionCourriers() {
     window.scrollTo({ top: 0 });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!perms.canCreateAdministratif && !perms.canCreateJuridique && !perms.canCreateLinked) return;
-    setError(''); setSuccess('');
-    try {
-      if (tab === TYPE_ADMINISTRATIF || tab === TYPE_SORTANT) {
-        let bureauOrdre = (form.idBureauOrdre || '').trim();
-        if (bureauOrdre && !bureauOrdre.includes('/')) bureauOrdre = `${bureauOrdre}/${currentYear}`;
-        let mainDate = tab === TYPE_SORTANT ? form.date : (form.dateArrivee || form.date);
-        let description = form.description?.trim() || '';
-        if (tab === TYPE_ADMINISTRATIF && form.dateMessage) {
-          description = `تاريخ الرسالة: ${form.dateMessage}` + (description ? ` | ${description}` : '');
-        }
-        const destinataire = tab === TYPE_ADMINISTRATIF ? 'محكمة الاستئناف' : form.destinataireSortant.trim();
-        const payload = {
-          idBureauOrdre: bureauOrdre,
-          date: new Date(mainDate).toISOString(),
-          source: tab === TYPE_SORTANT ? 'Sortant' : form.source.trim(),
-          sujet: form.sujet.trim(),
-          destinataire,
-          description,
-          etat: 'Nouveau',
-          lienPdf: form.lienPdf.trim(),
-          direction: tab === TYPE_SORTANT ? 'Sortant' : 'Entrant',
-          typeRegistre: tab === TYPE_SORTANT ? 'Morasalat' : 'Waridat',
-          typeCorrespondance: tab === TYPE_SORTANT ? 'Sortante' : null,
-          parentId: null,
-          idService: Number(form.idService),
-          numeroDeCourrier: form.numeroDeCourrier?.trim() || '',
-          estTransmissible: tab === TYPE_SORTANT ? false : Boolean(form.estTransmissible),
-        };
-        if (editingId) await axios.put(`/api/courriers/${editingId}`, payload);
-        else await axios.post('/api/courriers', payload);
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  // If duplicate found, show warning modal and store submit action
+  if (isDuplicateNumeroSource()) {
+    setDuplicateMessage(t('duplicate_numero_source_warning') || 'هذا الرقم مع هذا المصدر موجود مسبقاً. هل تريد الحفظ رغم ذلك؟');
+    setShowDuplicateWarning(true);
+    // Store the event so we can retry after confirmation
+    setPendingSubmit(() => async () => {
+      await performSubmit();
+    });
+    return;
+  }
+  
+  await performSubmit();
+};
+
+const performSubmit = async () => {
+  if (!perms.canCreateAdministratif && !perms.canCreateJuridique && !perms.canCreateLinked) return;
+  setError(''); setSuccess('');
+  try {
+    if (tab === TYPE_ADMINISTRATIF || tab === TYPE_SORTANT) {
+      let bureauOrdre = (form.idBureauOrdre || '').trim();
+      if (bureauOrdre && !bureauOrdre.includes('/')) bureauOrdre = `${bureauOrdre}/${currentYear}`;
+      let mainDate = tab === TYPE_SORTANT ? form.date : (form.dateArrivee || form.date);
+      let description = form.description?.trim() || '';
+      if (tab === TYPE_ADMINISTRATIF && form.dateMessage) {
+        description = `تاريخ الرسالة: ${form.dateMessage}` + (description ? ` | ${description}` : '');
+      }
+      const destinataire = tab === TYPE_ADMINISTRATIF ? 'محكمة الاستئناف' : form.destinataireSortant.trim();
+      const payload = {
+        idBureauOrdre: bureauOrdre,
+        date: new Date(mainDate).toISOString(),
+        source: tab === TYPE_SORTANT ? 'Sortant' : form.source.trim(),
+        sujet: form.sujet.trim(),
+        destinataire,
+        description,
+        etat: 'Nouveau',
+        lienPdf: form.lienPdf.trim(),
+        direction: tab === TYPE_SORTANT ? 'Sortant' : 'Entrant',
+        typeRegistre: tab === TYPE_SORTANT ? 'Morasalat' : 'Waridat',
+        typeCorrespondance: tab === TYPE_SORTANT ? 'Sortante' : null,
+        parentId: null,
+        idService: Number(form.idService),
+        numeroDeCourrier: form.numeroDeCourrier?.trim() || '',
+        estTransmissible: tab === TYPE_SORTANT ? false : Boolean(form.estTransmissible),
+      };
+      if (editingId) await axios.put(`/api/courriers/${editingId}`, payload);
+      else await axios.post('/api/courriers', payload);
       } else if (tab === TYPE_JUDICIAIRE) {
         let bureauOrdre = (form.idBureauOrdre || '').trim();
         if (bureauOrdre && !bureauOrdre.includes('/')) bureauOrdre = `${bureauOrdre}/${currentYear}`;
@@ -360,12 +418,29 @@ function GestionCourriers() {
         if (editingId) await axios.put(`/api/acteursjudiciaires/${editingId}`, payload);
         else await axios.post('/api/acteursjudiciaires', payload);
       }
-      setSuccess(editingId ? t('modification_succes') : t('ajout_succes'));
+      showSuccess(editingId ? t('modification_succes') : t('ajout_succes'));
       resetForm();
       fetchData();
-    } catch (err) { setError(getErrorMessage(err, t('erreur_enregistrement'))); }
+    } catch (err) { showError(getErrorMessage(err, t('erreur_enregistrement'))); }
   };
 
+  const isDuplicateNumeroSource = () => {
+  // Only check for administrative or outgoing documents
+  if (tab !== TYPE_ADMINISTRATIF && tab !== TYPE_SORTANT) return false;
+  
+  const currentNumero = form.numeroDeCourrier?.trim();
+  const currentSource = form.source?.trim();
+  
+  // Both fields must be filled to be considered
+  if (!currentNumero || !currentSource) return false;
+  
+  return allDocs.some(doc => 
+    doc.typeDocument === 'Administratif' &&      // only administrative docs
+    doc.numeroDeCourrier?.trim().toLowerCase() === currentNumero.toLowerCase() &&
+    doc.source?.trim().toLowerCase() === currentSource.toLowerCase() &&
+    doc.id !== editingId                         // exclude current document when editing
+  );
+};
   const handleEdit = (doc) => {
     if (!perms.canCreateAdministratif && !perms.canCreateJuridique && !perms.canCreateLinked) return;
     let type;
@@ -412,9 +487,9 @@ function GestionCourriers() {
     try {
       if (typeDoc === 'Judiciaire') await axios.delete(`/api/acteursjudiciaires/${id}`);
       else await axios.delete(`/api/courriers/${id}`);
-      setSuccess(t('suppression_succes'));
+      showSuccess(t('suppression_succes'));
       fetchData();
-    } catch (err) { setError(getErrorMessage(err, t('erreur_suppression'))); }
+    } catch (err) { showError(getErrorMessage(err, t('erreur_suppression'))); }
   };
 
   // ---------- TRANSFER FUNCTIONS (corrected) ----------
@@ -450,13 +525,13 @@ function GestionCourriers() {
       const res = await axios.get(`/api/utilisateurs?serviceId=${svcId}`);
       setSingleTransferUsers(res.data);
     } catch (err) {
-      setError(t('erreur_chargement'));
+      showError(t('erreur_chargement'));
     }
   };
 
   const handleSingleTransfer = async () => {
     if (!singleTransferTarget || !singleTransferUserId) {
-      setError(t('selection_requise'));
+      showError(t('selection_requise'));
       return;
     }
     const payload = {
@@ -470,7 +545,7 @@ function GestionCourriers() {
     console.log('Single-transfer payload:', payload);
     try {
       await axios.post('/api/transactions', payload);
-      setSuccess(t('transaction_envoyee'));
+      showSuccess(t('transaction_envoyee'));
       setShowSingleTransferModal(false);
       fetchData();
     } catch (err) {
@@ -482,7 +557,7 @@ function GestionCourriers() {
         else if (err.response.data.title) errorMsg = err.response.data.title;
       }
       alert(errorMsg);
-      setError(errorMsg);
+      showError(errorMsg);
     }
   };
 
@@ -528,7 +603,7 @@ function GestionCourriers() {
   const handleMultiTransfer = async () => {
     const allUserIds = transferSelections.flatMap(s => s.userIds);
     if (!transferTarget || allUserIds.length === 0) {
-      setError(t('selection_requise'));
+      showError(t('selection_requise'));
       return;
     }
     try {
@@ -542,12 +617,12 @@ function GestionCourriers() {
           message: transferMessage
         });
       }
-      setSuccess(t('transaction_envoyee'));
+      showSuccess(t('transaction_envoyee'));
       setShowTransferModal(false);
       fetchData();
     } catch (err) {
       console.error('Multi-transfer error:', err);
-      setError(err.response?.data?.message || t('erreur_transaction'));
+      showError(err.response?.data?.message || t('erreur_transaction'));
     }
   };
 
@@ -568,18 +643,18 @@ function GestionCourriers() {
         typeRegistre: 'Morasalat', typeCorrespondance: 'Sortante',
         parentId: replyTarget.id, idService: serviceId, numeroDeCourrier: '', estTransmissible: false,
       });
-      setSuccess(t('reply_added'));
+      showSuccess(t('reply_added'));
       setShowReplyModal(false);
       setRepliedIds(prev => new Set(prev).add(Number(replyTarget.id)));
       fetchData();
-    } catch (err) { setError(getErrorMessage(err, t('erreur_enregistrement'))); }
+    } catch (err) { showError(getErrorMessage(err, t('erreur_enregistrement'))); }
   };
   const handleReplyUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return;
     const fd = new FormData(); fd.append('file', file);
     setUploadingReply(true);
     try { const res = await axios.post('/api/courriers/upload-document', fd); setReplyForm(prev => ({ ...prev, lienPdf: res.data.lienPdf })); }
-    catch (err) { setError(getErrorMessage(err, t('erreur_upload'))); }
+    catch (err) { showError(getErrorMessage(err, t('erreur_upload'))); }
     finally { setUploadingReply(false); e.target.value = ''; }
   };
 
@@ -591,7 +666,7 @@ function GestionCourriers() {
   };
   const submitAnswer = async () => {
     const { source, sujet, date, lienPdf, description, estTransmissible } = answerForm;
-    if (!description.trim()) { setError(t('reponse_requise') || 'La réponse est obligatoire.'); return; }
+    if (!description.trim()) { showError(t('reponse_requise') || 'La réponse est obligatoire.'); return; }
     try {
       await axios.post('/api/courriers', {
         idBureauOrdre: answerTarget.idBureauOrdre || '', date: new Date(date).toISOString(),
@@ -601,18 +676,18 @@ function GestionCourriers() {
         typeCorrespondance: null, parentId: answerTarget.id, idService: serviceId,
         numeroDeCourrier: '', estTransmissible: Boolean(estTransmissible),
       });
-      setSuccess(t('reply_added'));
+      showSuccess(t('reply_added'));
       setShowAnswerModal(false);
       setRepliedIds(prev => new Set(prev).add(Number(answerTarget.id)));
       fetchData();
-    } catch (err) { setError(getErrorMessage(err, t('erreur_enregistrement'))); }
+    } catch (err) { showError(getErrorMessage(err, t('erreur_enregistrement'))); }
   };
   const handleAnswerUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return;
     const fd = new FormData(); fd.append('file', file);
     setUploadingAnswer(true);
     try { const res = await axios.post('/api/courriers/upload-document', fd); setAnswerForm(prev => ({ ...prev, lienPdf: res.data.lienPdf })); }
-    catch (err) { setError(getErrorMessage(err, t('erreur_upload'))); }
+    catch (err) { showError(getErrorMessage(err, t('erreur_upload'))); }
     finally { setUploadingAnswer(false); e.target.value = ''; }
   };
 
@@ -635,10 +710,10 @@ function GestionCourriers() {
       } else {
         await axios.put(`/api/courriers/${viewedReply.id}`, { idBureauOrdre: viewedReply.idBureauOrdre || '', date: new Date(editReplyForm.date).toISOString(), source: editReplyForm.source, sujet: editReplyForm.sujet, destinataire: editReplyForm.destinataire, description: editReplyForm.description, etat: 'Nouveau', lienPdf: editReplyForm.lienPdf, direction: viewedReply.direction, typeRegistre: viewedReply.typeRegistre, typeCorrespondance: viewedReply.typeCorrespondance, parentId: viewedReply.parentId, idService: viewedReply.idService, numeroDeCourrier: '', estTransmissible: viewedReply.estTransmissible });
       }
-      setSuccess(t('modification_succes'));
+      showSuccess(t('modification_succes'));
       setShowViewReplyModal(false);
       fetchData();
-    } catch (err) { setError(getErrorMessage(err, t('erreur_enregistrement'))); }
+    } catch (err) { showError(getErrorMessage(err, t('erreur_enregistrement'))); }
   };
   const openTransferFromView = () => {
     if (!viewedReply) return;
@@ -655,7 +730,7 @@ function GestionCourriers() {
       const res = await axios.get(`/api/transactions/history/${doc.id}?type=${docType}`);
       setHistoryTransactions(res.data.filter(tx => tx.statut === 'Accepté'));
       setShowHistoryModal(true);
-    } catch (err) { setError(getErrorMessage(err, t('erreur_chargement_historique'))); }
+    } catch (err) { showError(getErrorMessage(err, t('erreur_chargement_historique'))); }
   };
 
   const handleViewWithdrawals = async (doc) => {
@@ -664,7 +739,7 @@ function GestionCourriers() {
       const res = await axios.get(`/api/acteursjudiciaires/${doc.id}/retraits`);
       setWithdrawals(res.data);
       setShowWithdrawModal(true);
-    } catch (err) { setError(getErrorMessage(err, t('erreur_chargement'))); }
+    } catch (err) { showError(getErrorMessage(err, t('erreur_chargement'))); }
   };
 
   const handleViewDocument = async (doc) => {
@@ -677,21 +752,30 @@ function GestionCourriers() {
         setCurrentDocument(res.data);
       }
       setShowDocModal(true);
-    } catch (err) { setError(getErrorMessage(err, t('impossible_charger'))); }
+    } catch (err) { showError(getErrorMessage(err, t('impossible_charger'))); }
   };
 
   const handleMainUpload = async (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    const fd = new FormData(); fd.append('file', file);
-    setUploading(true);
-    try {
-      const url = tab === TYPE_JUDICIAIRE ? '/api/acteursjudiciaires/upload-pdf' : '/api/courriers/upload-document';
-      const res = await axios.post(url, fd);
-      setForm(prev => ({ ...prev, lienPdf: res.data.lienPdf }));
-      setSuccess(t('document_uploaded'));
-    } catch (err) { setError(getErrorMessage(err, t('erreur_upload'))); }
-    finally { setUploading(false); e.target.value = ''; }
-  };
+  const file = e.target.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  setUploading(true);
+  setPdfMessage({ text: '', type: '' }); // clear previous message
+  try {
+    const url = tab === TYPE_JUDICIAIRE ? '/api/acteursjudiciaires/upload-pdf' : '/api/courriers/upload-document';
+    const res = await axios.post(url, fd);
+    setForm(prev => ({ ...prev, lienPdf: res.data.lienPdf }));
+    setPdfMessage({ text: t('document_uploaded'), type: 'success' });
+    setTimeout(() => setPdfMessage({ text: '', type: '' }), 3000);
+  } catch (err) {
+    setPdfMessage({ text: getErrorMessage(err, t('erreur_upload')), type: 'error' });
+    setTimeout(() => setPdfMessage({ text: '', type: '' }), 4000);
+  } finally {
+    setUploading(false);
+    e.target.value = '';
+  }
+};
 
   const exportToExcel = () => {
     let url = '/api/courriers/export/excel';
@@ -713,7 +797,7 @@ function GestionCourriers() {
         a.click();
         window.URL.revokeObjectURL(urlBlob);
       })
-      .catch(() => setError(t('erreur_export')));
+      .catch(() => showError(t('erreur_export')));
   };
 
   // ========== IMPORT FUNCTIONS ==========
@@ -737,7 +821,7 @@ function GestionCourriers() {
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      setError(t('erreur_telechargement_modele') || 'Erreur lors du téléchargement du modèle');
+      showError(t('erreur_telechargement_modele') || 'Erreur lors du téléchargement du modèle');
     }
   };
 
@@ -756,7 +840,7 @@ function GestionCourriers() {
       setShowImportTypeModal(false);
       setShowMappingModal(true);
     } catch (err) {
-      setError(t('erreur_lecture_fichier') || 'Erreur lors de la lecture du fichier');
+      showError(t('erreur_lecture_fichier') || 'Erreur lors de la lecture du fichier');
       setImportFile(null);
     }
     e.target.value = '';
@@ -767,7 +851,7 @@ function GestionCourriers() {
     const requiredCols = requiredColumnsMap[selectedImportType] || [];
     const missingMappings = requiredCols.filter(col => !mapping[col]);
     if (missingMappings.length > 0) {
-      setError(t('colonnes_requises_manquantes') || 'Veuillez mapper toutes les colonnes requises');
+      showError(t('colonnes_requises_manquantes') || 'Veuillez mapper toutes les colonnes requises');
       return;
     }
     const formData = new FormData();
@@ -793,7 +877,7 @@ function GestionCourriers() {
       setMapping({});
       setSelectedImportType('');
     } catch (err) {
-      setError(getErrorMessage(err, t('erreur_import')));
+      showError(getErrorMessage(err, t('erreur_import')));
     } finally {
       setImportLoading(false);
     }
@@ -866,6 +950,8 @@ function GestionCourriers() {
                   <input type="text" name="numeroDossier" value={form.numeroDossier} onChange={handleChange} placeholder="2026/15/3" />
                 </div>
               )}
+              {tab === TYPE_ADMINISTRATIF && <div className="form-field"><label>{t('numero_interne')}</label><input type="text" name="numeroDeCourrier" value={form.numeroDeCourrier} onChange={handleChange} /></div>}
+
               {tab === TYPE_ADMINISTRATIF && (
                 <>
                   <div className="form-field"><label>{t('date_message') || 'تاريخ الرسالة'}</label><input type="date" name="dateMessage" value={form.dateMessage} onChange={handleChange} /></div>
@@ -884,7 +970,17 @@ function GestionCourriers() {
                   </select>
                 </div>
               ) : tab !== TYPE_SORTANT && (
-                <div className="form-field"><label>{t('source')} *</label><input type="text" name="source" value={form.source} onChange={handleChange} required /></div>
+              <div className="form-field">
+                <label>{t('source')} *</label>
+                <select name="source" value={form.source} onChange={handleChange} required>
+                  <option value="">-- {t('choisir')} --</option>
+                  {sourceOptions.map(opt => (
+                    <option key={opt.code} value={opt.code}>
+                      {locale === 'ar' ? opt.valueAr : opt.valueFr}
+                    </option>
+                  ))}
+                </select>
+              </div>
               )}
 
               {tab === TYPE_JUDICIAIRE && judMode === 'linked' && (
@@ -920,14 +1016,31 @@ function GestionCourriers() {
                   </select>
                 </div>
               )}
-              {tab === TYPE_ADMINISTRATIF && <div className="form-field"><label>{t('numero_interne')}</label><input type="text" name="numeroDeCourrier" value={form.numeroDeCourrier} onChange={handleChange} /></div>}
               {tab === TYPE_ADMINISTRATIF && (
                 <div className="form-field">
                   <label>{t('transmissible')}</label>
                   <label className="checkbox-field"><input type="checkbox" name="estTransmissible" checked={form.estTransmissible} onChange={handleChange} /> {t('oui')}</label>
                 </div>
               )}
-              <div className="form-field full-width"><label>{t('document_pdf_word')}</label><div className="document-control"><label className="document-upload-button">{uploading ? t('uploading') : t('choisir_fichier')}<input type="file" accept=".pdf,.doc,.docx" onChange={handleMainUpload} /></label><div className={form.lienPdf ? "document-link-preview filled" : "document-link-preview"}><span title={form.lienPdf}>{form.lienPdf ? getDocumentName(form.lienPdf) : t('aucun_fichier')}</span>{form.lienPdf && <a href={getDocumentHref(form.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}</div><div className="document-link-input"><input type="text" name="lienPdf" value={form.lienPdf} onChange={handleChange} placeholder={t('lien_manuel')} />{form.lienPdf && <a href={getDocumentHref(form.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}</div></div></div>
+                <div className="form-field full-width"><label>{t('document_pdf_word')}</label><div className="document-control">
+                    <label className="document-upload-button">
+                      {uploading ? t('uploading') : t('choisir_fichier')}
+                      <input type="file" accept=".pdf,.doc,.docx" onChange={handleMainUpload} />
+                    </label>
+                    <div className={form.lienPdf ? "document-link-preview filled" : "document-link-preview"}>
+                      <span title={form.lienPdf}>{form.lienPdf ? getDocumentName(form.lienPdf) : t('aucun_fichier')}</span>
+                      {form.lienPdf && <a href={getDocumentHref(form.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}
+                    </div>
+         
+                  </div>
+                  {/* PDF upload message right below the controls */}
+                  {pdfMessage.text && (
+                    <div className={pdfMessage.type === 'success' ? 'success-message' : 'error-message'} style={{ marginTop: '0.5rem', fontSize: '0.85rem', textAlign: 'center' }}>
+                      {pdfMessage.text}
+                    </div>
+                  )}
+                </div>             
+             
               <div className="form-field full-width"><label>{t('notes')}</label><textarea name="description" value={form.description} onChange={handleChange} rows="3" /></div>
             </div>
             <div className="form-actions"><button type="submit" className="btn-primary">{editingId ? t('modifier') : t('ajouter')}</button>{editingId && <button type="button" className="btn-secondary" onClick={resetForm}>{t('annuler')}</button>}</div>
@@ -993,7 +1106,9 @@ function GestionCourriers() {
                 {visibleColumns.etat && <th>{t('col_etat')}</th>}
                 {visibleColumns.emplacement && <th>{t('col_emplacement')}</th>}
                 {visibleColumns.pdf && <th>PDF</th>}
+                {visibleColumns.replyInfo && <th>{t('col_replyInfo') || 'الرد'}</th>}
                 {visibleColumns.actions && <th>{t('actions')}</th>}
+            
               </tr>
             </thead>
             <tbody>
@@ -1014,6 +1129,8 @@ function GestionCourriers() {
                   const canTransfer = !doc.estArchive && isTransmissible && isInMyService && (isJud ? true : !doc.hasTransaction) && perms.canTransfer;
                   const docTypeLabel = isJud ? t('judiciaire') : (isSort ? t('sortante') : t('administratif'));
                   const docTypeClass = isJud ? 'judiciaire' : (isSort ? 'sortante' : 'administratif');
+
+                  const reply = allDocs.find(d => d.parentId === doc.id);
                   return (
                     <tr key={`${doc.id}_${doc.typeDocument}`}>
                       <td style={{ width: '40px' }}><input type="checkbox" checked={selectedRowIds.includes(doc.id)} onChange={() => handleSelectRow(doc.id)} /></td>
@@ -1027,7 +1144,37 @@ function GestionCourriers() {
                       {visibleColumns.destinataire && <td>{doc.destinataire || '-'}</td>}
                       {visibleColumns.etat && <td>{formatEtat(doc.etat || doc.etatArchive)}</td>}
                       {visibleColumns.emplacement && <td>{doc.emplacement || '-'}</td>}
-                      {visibleColumns.pdf && <td>{doc.lienPdf ? <a href={getDocumentHref(doc.lienPdf)} target="_blank" rel="noreferrer">PDF</a> : '-'}</td>}
+                      {visibleColumns.pdf && <td>{doc.lienPdf ? <a href={getDocumentHref(doc.lienPdf)} target="_blank" rel="noreferrer">PDF</a> : '-'}</td>}                    
+                      {visibleColumns.replyInfo && (
+                        <td className="reply-cell-wide">
+                          {reply ? (
+                            <div className="reply-card">
+                              <div className="reply-card-header">
+                                <span className="reply-icon">💬</span>
+                                <span className="reply-date-large">{formatDate(reply.date)}</span>
+                              </div>
+                              <div className="reply-card-subject">{reply.sujet || '-'}</div>
+                              <div className="reply-card-meta">
+                                <span className="meta-label">{t('col_replySource') || 'مصدر / مرسل إليه'}:</span>
+                                <span className="meta-value">{reply.source || reply.destinataire || '-'}</span>
+                              </div>
+                              {reply.description && (
+                                <div className="reply-card-description">
+                                  <span className="meta-label">{t('الرد') || 'الرد'}:</span>
+                                  <span className="meta-value">{reply.description.length > 120 ? reply.description.slice(0, 120) + '…' : reply.description}</span>
+                                </div>
+                              )}
+                              {reply.lienPdf && (
+                                <div className="reply-card-pdf">
+                                  <a href={getDocumentHref(reply.lienPdf)} target="_blank" rel="noreferrer" className="btn-secondary btn-small" style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }}>
+                                    📎 {t('ouvrir')}
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          ) : '-'}
+                        </td>
+                      )}                     
                       {visibleColumns.actions && (
                         <td className="action-icons">
                           <button className="action-btn" onClick={() => handleViewDocument(doc)} title={t('consulter')}>📄 {t('consulter')}</button>
@@ -1143,7 +1290,7 @@ function GestionCourriers() {
               <div className="form-field"><label>{t('sujet')} *</label><input value={replyForm.sujet} onChange={e => setReplyForm({ ...replyForm, sujet: e.target.value })} required /></div>
               <div className="form-field"><label>{t('date')}</label><input type="date" value={replyForm.date} onChange={e => setReplyForm({ ...replyForm, date: e.target.value })} /></div>
               <div className="form-field full-width"><label>{t('document_pdf_word')}</label><div className="document-control"><label className="document-upload-button">{uploadingReply ? t('uploading') : t('choisir_fichier')}<input type="file" accept=".pdf,.doc,.docx" onChange={handleReplyUpload} /></label><div className={replyForm.lienPdf ? "document-link-preview filled" : "document-link-preview"}><span>{replyForm.lienPdf ? getDocumentName(replyForm.lienPdf) : t('aucun_fichier')}</span>{replyForm.lienPdf && <a href={getDocumentHref(replyForm.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}</div><div className="document-link-input"><input type="text" value={replyForm.lienPdf} onChange={e => setReplyForm({ ...replyForm, lienPdf: e.target.value })} placeholder={t('lien_manuel')} />{replyForm.lienPdf && <a href={getDocumentHref(replyForm.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}</div></div></div>
-              <div className="form-field full-width"><label>{t('notes')}</label><textarea value={replyForm.description} onChange={e => setReplyForm({ ...replyForm, description: e.target.value })} rows="3" /></div>
+              <div className="form-field full-width"><label>{t('الرد')}</label><textarea value={replyForm.description} onChange={e => setReplyForm({ ...replyForm, description: e.target.value })} rows="3" /></div>
             </div>
             <div className="form-actions"><button className="btn-primary" onClick={submitReply}>{t('envoyer')}</button><button className="btn-secondary" onClick={() => setShowReplyModal(false)}>{t('annuler')}</button></div>
           </div>
@@ -1274,6 +1421,56 @@ function GestionCourriers() {
 
       {/* Document Modal */}
       {showDocModal && currentDocument && <DocumentModal document={currentDocument} onClose={() => setShowDocModal(false)} />}
+   
+      {/* Duplicate warning modal */}
+{showDuplicateWarning && (
+  <div className="modal-overlay" onClick={() => setShowDuplicateWarning(false)}>
+    <div className="modal" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
+      <div className="registry-panel-header">
+        <h3>{t('attention') || 'تنبيه'}</h3>
+        <button className="btn-secondary" onClick={() => setShowDuplicateWarning(false)}>{t('fermer')}</button>
+      </div>
+      <div style={{ padding: '1rem', textAlign: 'center' }}>
+        <p>{duplicateMessage}</p>
+      </div>
+      <div className="form-actions" style={{ justifyContent: 'center', gap: '1rem' }}>
+        <button 
+          className="btn-primary" 
+          onClick={() => {
+            setShowDuplicateWarning(false);
+            if (pendingSubmit) pendingSubmit();
+            setPendingSubmit(null);
+          }}
+        >
+          {t('confirmer') || 'تأكيد'}
+        </button>
+        <button 
+          className="btn-secondary" 
+          onClick={() => {
+            setShowDuplicateWarning(false);
+            setPendingSubmit(null);
+          }}
+        >
+          {t('annuler') || 'إلغاء'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}   
+
+
+{successMessage.visible && (
+  <div className="toast-message success">
+    <span>{successMessage.text}</span>
+    <button onClick={() => setSuccessMessage({ text: '', visible: false })}>✕</button>
+  </div>
+)}
+{errorMessage.visible && (
+  <div className="toast-message error">
+    <span>{errorMessage.text}</span>
+    <button onClick={() => setErrorMessage({ text: '', visible: false })}>✕</button>
+  </div>
+)}
     </div>
   );
 }

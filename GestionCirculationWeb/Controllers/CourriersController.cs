@@ -203,185 +203,200 @@ namespace GestionCourrier.Controllers
         }
 
         // ========== EXPORT ==========
-        private static void ApplyHeaderStructure(IXLWorksheet ws)
-        {
-            var grayFill  = XLColor.FromArgb(165, 165, 165);
-            var lightGray = XLColor.FromArgb(242, 242, 242);
-            var whiteFont = XLColor.White;
-            var blackFont = XLColor.Black;
+private static void ApplyHeaderStructure(IXLWorksheet ws)
+{
+    var grayFill  = XLColor.FromArgb(165, 165, 165);
+    var lightGray = XLColor.FromArgb(242, 242, 242);
+    var whiteFont = XLColor.White;
+    var blackFont = XLColor.Black;
 
-            void ApplyMainHeader(IXLRange range, string value)
-            {
-                range.Merge();
-                range.Value = value;
-                range.Style.Font.Bold = true;
-                range.Style.Font.FontColor = whiteFont;
-                range.Style.Fill.BackgroundColor = grayFill;
-                range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                range.Style.Alignment.Vertical   = XLAlignmentVerticalValues.Center;
-                range.Style.Alignment.WrapText   = true;
-                range.Style.Border.OutsideBorder      = XLBorderStyleValues.Medium;
-                range.Style.Border.OutsideBorderColor = XLColor.Black;
-            }
+    void ApplyMainHeader(IXLRange range, string value)
+    {
+        range.Merge();
+        range.Value = value;
+        range.Style.Font.Bold = true;
+        range.Style.Font.FontColor = whiteFont;
+        range.Style.Fill.BackgroundColor = grayFill;
+        range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        range.Style.Alignment.Vertical   = XLAlignmentVerticalValues.Center;
+        range.Style.Alignment.WrapText   = true;
+        range.Style.Border.OutsideBorder      = XLBorderStyleValues.Medium;
+        range.Style.Border.OutsideBorderColor = XLColor.Black;
+    }
 
-            ApplyMainHeader(ws.Range("A1:F1"), "المراسلات");
-            ApplyMainHeader(ws.Range("G1:L2"), "الواردات(cette champs remplie par les entrant administratif ou judiciares)");
-            ws.Row(1).Height = 30;
+    // Top primary groupings (Columns A-F for الواردات, Columns G-L for المراسلات)
+    ApplyMainHeader(ws.Range("A1:F2"), "الواردات");
+    ApplyMainHeader(ws.Range("G1:L1"), "المراسلات");
+    ws.Row(1).Height = 30;
 
-            ApplyMainHeader(ws.Range("A2:A3"), "النتيجة (cette champs just pour le note il restes vide)");
-            ApplyMainHeader(ws.Range("B2:C2"), "الواردة(cette case remplire pas la reponse sur sortant si exist )");
-            ApplyMainHeader(ws.Range("D2:F2"), "صادرة(cette case remplir par les sortant ou si il y a une reponse sur(Administratif ou Judiciare))");
-            ws.Row(2).Height = 40;
+    // Sub-groupings under المراسلات (Note: Ranges must follow Left-to-Right alpha ordering)
+    ApplyMainHeader(ws.Range("G2:I2"), "صادرة");
+    ApplyMainHeader(ws.Range("J2:K2"), "الواردة");
+    ApplyMainHeader(ws.Range("L2:L3"), "النتيجة ");
+    ws.Row(2).Height = 40;
 
-            string[] colHeaders = { "المصدر والجواب", "التاريخ", "الموضوع", "المرسل إليه", "التاريخ", "الموضوع", "اسم وموطن المرسل إليه", "تاريخ الوصول", "رقمها", "التاريخ الرسالة", "رقم الترتيبي" };
-            for (int i = 0; i < colHeaders.Length; i++)
-            {
-                var cell = ws.Cell(3, i + 2);
-                cell.Value = colHeaders[i];
-                cell.Style.Font.Bold = true;
-                cell.Style.Font.FontColor = blackFont;
-                cell.Style.Fill.BackgroundColor = grayFill;
-                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                cell.Style.Alignment.Vertical   = XLAlignmentVerticalValues.Center;
-                cell.Style.Alignment.WrapText   = true;
-                cell.Style.Border.OutsideBorder      = XLBorderStyleValues.Thin;
-                cell.Style.Border.OutsideBorderColor = XLColor.Black;
-            }
-            ws.Row(3).Height = 50;
+    // Loop through headers array and reverse write them from Column 1 (A) to Column 11 (K)
+    string[] colHeaders = { "المصدر والجواب", "التاريخ", "الموضوع", "المرسل إليه", "التاريخ", "الموضوع", "اسم وموطن المرسل إليه", "تاريخ الوصول", "رقمها", "التاريخ الرسالة", "رقم الترتيبي" };
+    
+    for (int i = 0; i < colHeaders.Length; i++)
+    {
+        // Maps index 10 ("رقم الترتيبي") to Column 1, index 9 to Column 2, down to index 0 to Column 11
+        int targetColumn = 11 - i; 
+        
+        var cell = ws.Cell(3, targetColumn);
+        cell.Value = colHeaders[i];
+        cell.Style.Font.Bold = true;
+        cell.Style.Font.FontColor = blackFont;
+        cell.Style.Fill.BackgroundColor = grayFill;
+        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        cell.Style.Alignment.Vertical   = XLAlignmentVerticalValues.Center;
+        cell.Style.Alignment.WrapText   = true;
+        cell.Style.Border.OutsideBorder      = XLBorderStyleValues.Thin;
+        cell.Style.Border.OutsideBorderColor = XLColor.Black;
+    }
+    ws.Row(3).Height = 50;
 
-            var headerBlock = ws.Range("A1:L3");
-            headerBlock.Style.Border.OutsideBorder      = XLBorderStyleValues.Medium;
-            headerBlock.Style.Border.OutsideBorderColor = XLColor.Black;
+    var headerBlock = ws.Range("A1:L3");
+    headerBlock.Style.Border.OutsideBorder      = XLBorderStyleValues.Medium;
+    headerBlock.Style.Border.OutsideBorderColor = XLColor.Black;
 
-            ws.Column(1).Width  = 30;
-            ws.Column(2).Width  = 40;
-            ws.Column(3).Width  = 15;
-            ws.Column(4).Width  = 40;
-            ws.Column(5).Width  = 30;
-            ws.Column(6).Width  = 15;
-            ws.Column(7).Width  = 40;
-            ws.Column(8).Width  = 35;
-            ws.Column(9).Width  = 15;
-            ws.Column(10).Width = 13;
-            ws.Column(11).Width = 13;
-            ws.Column(12).Width = 13;
-        }
+    // Inverted column base widths to follow the new structure layout
+    ws.Column(1).Width  = 13; // رقم الترتيبي
+    ws.Column(2).Width  = 13; // التاريخ الرسالة
+    ws.Column(3).Width  = 13; // رقمها
+    ws.Column(4).Width  = 15; // تاريخ الوصول
+    ws.Column(5).Width  = 35; // اسم وموطن المرسل إليه
+    ws.Column(6).Width  = 40; // الموضوع
+    ws.Column(7).Width  = 15; // التاريخ
+    ws.Column(8).Width  = 30; // المرسل إليه
+    ws.Column(9).Width  = 40; // الموضوع
+    ws.Column(10).Width = 15; // التاريخ
+    ws.Column(11).Width = 40; // المصدر والجواب
+    ws.Column(12).Width = 30; // النتيجة
+}
         
 
-        [HttpGet("export/excel")]
-        public async Task<IActionResult> ExportExcel(string? motCle, string? numeroBureauOrdre, DateTime? date, string? type, [FromQuery] List<int> ids)
+[HttpGet("export/excel")]
+public async Task<IActionResult> ExportExcel(string? motCle, string? numeroBureauOrdre, DateTime? date, string? type, [FromQuery] List<int> ids)
+{
+    var query = GetUnifiedQuery().Where(e => e.ParentId == null);
+    query = ApplyStructuredFilters(query, numeroBureauOrdre, date, type);
+
+    if (!string.IsNullOrWhiteSpace(motCle))
+    {
+        var keyword = motCle.Trim();
+        query = query.Where(e =>
+            (e.IdBureauOrdre != null && e.IdBureauOrdre.StartsWith(keyword)) ||
+            e.Source.StartsWith(keyword) || e.Sujet.StartsWith(keyword) ||
+            e.Destinataire.StartsWith(keyword) || e.Description.StartsWith(keyword) ||
+            e.Etat.StartsWith(keyword));
+    }
+
+    var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+    if (userRole == "Enregistrement" || userRole == "Procedures")
+        query = query.Where(e => string.IsNullOrEmpty(e.IdBureauOrdre));
+    else if (userRole == "Greffier")
+        query = query.Where(e => !string.IsNullOrEmpty(e.IdBureauOrdre));
+
+    if (ids != null && ids.Any())
+        query = query.Where(e => ids.Contains(e.Id));
+
+    var courriers = await query.ToListAsync();
+    courriers = courriers.OrderBy(c =>
+    {
+        if (string.IsNullOrWhiteSpace(c.IdBureauOrdre)) return int.MaxValue;
+        var parts = c.IdBureauOrdre.Split('/');
+        return parts.Length > 0 && int.TryParse(parts[0], out int num) ? num : int.MaxValue;
+    }).ToList();
+
+    using var workbook = new XLWorkbook();
+    var ws = workbook.Worksheets.Add("Courriers");
+    
+    // Aligned to Right-To-Left view orientation
+    ws.RightToLeft = true; 
+
+    ApplyHeaderStructure(ws);
+
+    var bodyGray = XLColor.FromArgb(242, 242, 242);
+    int row = 4;
+
+    foreach (var c in courriers)
+    {
+        DateTime? extractedDateMessage = null;
+        var desc = c.Description ?? "";
+        var match = System.Text.RegularExpressions.Regex.Match(desc, @"تاريخ الرسالة:\s*(\S+)");
+        if (match.Success && DateTime.TryParse(match.Groups[1].Value, out DateTime parsedDate))
+            extractedDateMessage = parsedDate;
+
+        string resultNote = "", sourceReply = "";
+        DateTime? date1 = null;
+        string subject1 = "", destinataire = "";
+        DateTime? date2 = null;
+        string subject2 = "", senderName = "";
+        DateTime? arrivalDate = null;
+        string number = "";
+        DateTime? letterDate = null;
+        string serialNumber = "";
+
+        var reply = await _context.Entites.FirstOrDefaultAsync(e => e.ParentId == c.Id && e.TypeDocument == TypeDocumentAdministratif);
+        bool isOutgoing = (c.TypeRegistre == "Morasalat" && c.TypeCorrespondance == "Sortante") || c.Direction == "Sortant";
+
+        if (isOutgoing)
         {
-            var query = GetUnifiedQuery().Where(e => e.ParentId == null);
-            query = ApplyStructuredFilters(query, numeroBureauOrdre, date, type);
-
-            if (!string.IsNullOrWhiteSpace(motCle))
-            {
-                var keyword = motCle.Trim();
-                query = query.Where(e =>
-                    (e.IdBureauOrdre != null && e.IdBureauOrdre.StartsWith(keyword)) ||
-                    e.Source.StartsWith(keyword) || e.Sujet.StartsWith(keyword) ||
-                    e.Destinataire.StartsWith(keyword) || e.Description.StartsWith(keyword) ||
-                    e.Etat.StartsWith(keyword));
-            }
-
-            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
-            if (userRole == "Enregistrement" || userRole == "Procedures")
-                query = query.Where(e => string.IsNullOrEmpty(e.IdBureauOrdre));
-            else if (userRole == "Greffier")
-                query = query.Where(e => !string.IsNullOrEmpty(e.IdBureauOrdre));
-
-            if (ids != null && ids.Any())
-                query = query.Where(e => ids.Contains(e.Id));
-
-            var courriers = await query.ToListAsync();
-            courriers = courriers.OrderBy(c =>
-            {
-                if (string.IsNullOrWhiteSpace(c.IdBureauOrdre)) return int.MaxValue;
-                var parts = c.IdBureauOrdre.Split('/');
-                return parts.Length > 0 && int.TryParse(parts[0], out int num) ? num : int.MaxValue;
-            }).ToList();
-
-            using var workbook = new XLWorkbook();
-            var ws = workbook.Worksheets.Add("Courriers");
-            ApplyHeaderStructure(ws);
-
-            var bodyGray = XLColor.FromArgb(242, 242, 242);
-            int row = 4;
-
-            foreach (var c in courriers)
-            {
-                DateTime? extractedDateMessage = null;
-                var desc = c.Description ?? "";
-                var match = System.Text.RegularExpressions.Regex.Match(desc, @"تاريخ الرسالة:\s*(\S+)");
-                if (match.Success && DateTime.TryParse(match.Groups[1].Value, out DateTime parsedDate))
-                    extractedDateMessage = parsedDate;
-
-                string resultNote = "", sourceReply = "";
-                DateTime? date1 = null;
-                string subject1 = "", destinataire = "";
-                DateTime? date2 = null;
-                string subject2 = "", senderName = "";
-                DateTime? arrivalDate = null;
-                string number = "";
-                DateTime? letterDate = null;
-                string serialNumber = "";
-
-                var reply = await _context.Entites.FirstOrDefaultAsync(e => e.ParentId == c.Id && e.TypeDocument == TypeDocumentAdministratif);
-                bool isOutgoing = (c.TypeRegistre == "Morasalat" && c.TypeCorrespondance == "Sortante") || c.Direction == "Sortant";
-
-                if (isOutgoing)
-                {
-                    subject1 = c.Sujet ?? "";
-                    destinataire = c.Destinataire ?? "";
-                    date2 = c.DateCreation;
-                    serialNumber = c.IdBureauOrdre ?? "";
-                    if (reply != null) { sourceReply = reply.Sujet ?? ""; date1 = reply.DateCreation; }
-                }
-                else
-                {
-                    subject2 = c.Sujet ?? "";
-                    senderName = c.Source ?? "";
-                    arrivalDate = c.DateCreation;
-                    number = c.NumeroDeCourrier ?? "";
-                    letterDate = extractedDateMessage;
-                    serialNumber = c.IdBureauOrdre ?? "";
-                    if (reply != null) { subject1 = reply.Sujet ?? ""; destinataire = reply.Destinataire ?? ""; date2 = reply.DateCreation; }
-                }
-
-                ws.Cell(row, 1).Value = resultNote;
-                ws.Cell(row, 2).Value = sourceReply;
-                SetDate(ws.Cell(row, 3), date1);
-                ws.Cell(row, 4).Value = subject1;
-                ws.Cell(row, 5).Value = destinataire;
-                SetDate(ws.Cell(row, 6), date2);
-                ws.Cell(row, 7).Value = subject2;
-                ws.Cell(row, 8).Value = senderName;
-                SetDate(ws.Cell(row, 9), arrivalDate);
-                ws.Cell(row, 10).Value = number;
-                SetDate(ws.Cell(row, 11), letterDate);
-                ws.Cell(row, 12).Value = serialNumber;
-
-                var rowRange = ws.Range(row, 1, row, 12);
-                rowRange.Style.Fill.BackgroundColor = bodyGray;
-                rowRange.Style.Font.FontColor = XLColor.Black;
-                rowRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-                rowRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                rowRange.Style.Alignment.WrapText = true;
-                rowRange.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
-                rowRange.Style.Border.OutsideBorderColor = XLColor.Black;
-                rowRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
-                rowRange.Style.Border.InsideBorderColor = XLColor.FromArgb(180, 180, 180);
-                ws.Row(row).Height = 35;
-                row++;
-            }
-
-            if (row > 4) ws.Range(4, 1, row - 1, 12).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
-
-            using var stream = new MemoryStream();
-            workbook.SaveAs(stream);
-            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"courriers_{DateTime.Now:yyyyMMddHHmm}.xlsx");
+            subject1 = c.Sujet ?? "";
+            destinataire = c.Destinataire ?? "";
+            date2 = c.DateCreation;
+            serialNumber = c.IdBureauOrdre ?? "";
+            if (reply != null) { sourceReply = reply.Sujet ?? ""; date1 = reply.DateCreation; }
+        }
+        else
+        {
+            subject2 = c.Sujet ?? "";
+            senderName = c.Source ?? "";
+            arrivalDate = c.DateCreation;
+            number = c.NumeroDeCourrier ?? "";
+            letterDate = extractedDateMessage;
+            serialNumber = c.IdBureauOrdre ?? "";
+            if (reply != null) { subject1 = reply.Sujet ?? ""; destinataire = reply.Destinataire ?? ""; date2 = reply.DateCreation; }
         }
 
+        // Cell population logic inverted completely from Column 1 (A) to Column 12 (L)
+        ws.Cell(row, 1).Value = serialNumber;      // A: رقم الترتيبي
+        SetDate(ws.Cell(row, 2), letterDate);      // B: التاريخ الرسالة
+        ws.Cell(row, 3).Value = number;           // C: رقمها
+        SetDate(ws.Cell(row, 4), arrivalDate);     // D: تاريخ الوصول
+        ws.Cell(row, 5).Value = senderName;        // E: اسم وموطن المرسل إليه
+        ws.Cell(row, 6).Value = subject2;          // F: الموضوع
+        SetDate(ws.Cell(row, 7), date2);           // G: التاريخ
+        ws.Cell(row, 8).Value = destinataire;      // H: المرسل إليه
+        ws.Cell(row, 9).Value = subject1;          // I: الموضوع
+        SetDate(ws.Cell(row, 10), date1);          // J: التاريخ
+        ws.Cell(row, 11).Value = sourceReply;      // K: المصدر والجواب
+        ws.Cell(row, 12).Value = resultNote;       // L: النتيجة
+
+        var rowRange = ws.Range(row, 1, row, 12);
+        rowRange.Style.Fill.BackgroundColor = bodyGray;
+        rowRange.Style.Font.FontColor = XLColor.Black;
+        rowRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        rowRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        rowRange.Style.Alignment.WrapText = true;
+        rowRange.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+        rowRange.Style.Border.OutsideBorderColor = XLColor.Black;
+        rowRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        rowRange.Style.Border.InsideBorderColor = XLColor.FromArgb(180, 180, 180);
+        ws.Row(row).Height = 35;
+        row++;
+    }
+
+    if (row > 4) ws.Range(4, 1, row - 1, 12).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+
+    // Automatically scales columns to completely eliminate value truncations
+    ws.Columns().AdjustToContents(); 
+
+    using var stream = new MemoryStream();
+    workbook.SaveAs(stream);
+    return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"courriers_{DateTime.Now:yyyyMMddHHmm}.xlsx");
+}
         // ========== TEMPLATE ==========
         [HttpGet("template-excel")]
         public IActionResult GetTemplateExcel([FromQuery] string? type)

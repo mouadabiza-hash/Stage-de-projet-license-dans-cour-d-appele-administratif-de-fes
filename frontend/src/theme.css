@@ -912,3 +912,148 @@ html[dir="ltr"] .section-title { border-right: none; border-left: 4px solid var(
   background: white;
 }
 
+/* Toast message - fixed at top center */
+.toast-message {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  min-width: 300px;
+  max-width: 500px;
+  padding: 1rem 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  font-weight: bold;
+  font-size: 1rem;
+  backdrop-filter: blur(10px);
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.toast-message.success {
+  background: linear-gradient(135deg, #10b981, #2b5f4e);
+  color: white;
+  border-left: 5px solid #fbbf24;
+}
+
+.toast-message.error {
+  background: linear-gradient(135deg, #ef4444, #942323);
+  color: white;
+  border-left: 5px solid #fef08a;
+}
+
+.toast-message button {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: white;
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.toast-message button:hover {
+  background: rgba(255,255,255,0.4);
+}
+/* Wide reply column styling */
+.reply-cell-wide {
+  min-width: 280px;
+  max-width: 380px;
+  vertical-align: top;
+  padding: 0.6rem;
+  background-color: #fefefa;
+}
+
+.reply-card {
+  background: #ffffff;
+  border: 1px solid var(--gold);
+  border-radius: 12px;
+  padding: 0.75rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  transition: all 0.2s;
+}
+
+.reply-card:hover {
+  box-shadow: 0 4px 12px rgba(217, 161, 43, 0.15);
+  transform: translateY(-1px);
+}
+
+.reply-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--soft-line);
+}
+
+.reply-icon {
+  font-size: 1.2rem;
+}
+
+.reply-date-large {
+  font-weight: 800;
+  color: var(--navy-800);
+  font-size: 0.9rem;
+  background: #f1f5f9;
+  padding: 0.2rem 0.5rem;
+  border-radius: 20px;
+}
+
+.reply-card-subject {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--ink);
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.reply-card-meta,
+.reply-card-description {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.meta-label {
+  font-weight: 800;
+  color: var(--navy-700);
+  min-width: 85px;
+}
+
+.meta-value {
+  font-weight: 500;
+  color: var(--muted);
+  word-break: break-word;
+  flex: 1;
+}
+
+.reply-card-pdf {
+  margin-top: 0.6rem;
+  text-align: left;
+}

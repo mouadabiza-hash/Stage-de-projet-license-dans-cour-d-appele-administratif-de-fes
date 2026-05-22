@@ -470,7 +470,15 @@
 "col_numeroDossier": "رقم الملف",
 "col_numeroPremiereInstance": "الرقم الابتدائي",
 "col_description": "الوصف",
-"col_parentJudiciaireId": "معرف الملف الأصلي"
+"col_parentJudiciaireId": "معرف الملف الأصلي",
+"duplicate_numero_source_warning": "هذا الرقم الارسالي مع هذا المصدر موجود مسبقاً. هل تريد الحفظ رغم ذلك؟",
+"attention": "تنبيه",
+"confirmer": "تأكيد",
+"col_replyDate": "تاريخ الرد",
+"col_replySubject": "موضوع الرد",
+"col_replySource": "مصدر / مرسل إليه",
+"الرد":"الرد",
+"col_replyInfo": "الرد"
 
 }
 

@@ -462,7 +462,15 @@
 "list_TribunalType": "Types de tribunal",
 "list_Direction": "Direction",
 "list_CorrespondanceType": "Type de correspondance",
-"type_judiciaire":"type de dossier"
+"type_judiciaire":"type de dossier",
+"duplicate_numero_source_warning": "Ce numéro interne avec cette source existe déjà. Voulez-vous l'enregistrer quand même ?",
+"attention": "Attention",
+"confirmer": "Confirmer",
+"col_replyDate": "Date de réponse",
+"col_replySubject": "Objet de la réponse",
+"الرد": "réponse",
+"col_replyInfo": "Réponse",
+"col_replySource": "Source / Destinataire"
 
 
 }
