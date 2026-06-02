@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Unicode;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,7 +15,9 @@ builder.Services.AddControllersWithViews()
     {
         // Force UTF-8 encoding without escaping Arabic characters
         options.JsonSerializerOptions.Encoder = JavaScriptEncoder.Create(UnicodeRanges.BasicLatin, UnicodeRanges.Arabic);
+        
         // No Encoding property – remove it
+      options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     });
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>

@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../hooks/usePermissions';
+import SearchableSelect from './SearchableSelect';
 
 function GererServices() {
     const { t } = useTranslation();
     const perms = usePermissions();
 
-    // Directeur and Admin can view; only Admin can manage
     if (!perms.canViewServices) {
         return <div className="error-message">{t('access_denied') || 'Accès refusé'}</div>;
     }
@@ -26,6 +26,9 @@ function GererServices() {
     const [showMapping, setShowMapping] = useState(false);
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [currentPage, setCurrentPage] = useState(1);
+
+    // Prepare options for SearchableSelect (headers for import)
+    const headerOptions = headers.map(h => ({ value: h, label: h }));
 
     const fetchServices = async () => {
         try {
@@ -70,7 +73,7 @@ function GererServices() {
     const handleEdit = (s) => {
         if (!perms.canManageServices) return;
         setEditingId(s.idService);
-        setForm({ idService: s.idService, nomService: s.nomService, description: s.description || '', etage: s.etage || '' });
+        setForm({ idService: String(s.idService), nomService: s.nomService, description: s.description || '', etage: s.etage || '' });
     };
     const handleDelete = async (id) => {
         if (!perms.canManageServices) return;
@@ -167,8 +170,8 @@ function GererServices() {
             <h1 className="page-title">{t('gerer_services')}</h1>
             {error && <div className="error-message">{error}</div>}
             <div className="filters">
-                <input type="text" placeholder={t('rechercher_service')} value={search} onChange={e => setSearch(e.target.value)} />
-                <input type="text" placeholder={t('filtrer_etage')} value={filterEtage} onChange={e => setFilterEtage(e.target.value)} />
+                <input type="text" placeholder={t('rechercher_service')} value={search} onChange={e => setSearch(e.target.value)} className="form-input" />
+                <input type="text" placeholder={t('filtrer_etage')} value={filterEtage} onChange={e => setFilterEtage(e.target.value)} className="form-input" />
                 <button className="btn-secondary" onClick={() => { setSearch(''); setFilterEtage(''); }}>{t('reinitialiser')}</button>
                 {perms.canExport && <button className="btn-primary" onClick={exportToExcel}>{t('exporter_excel')}</button>}
                 {perms.canManageServices && (
@@ -186,12 +189,51 @@ function GererServices() {
                 <div className="mapping-panel">
                     <h4>{t('associer_colonnes')}</h4>
                     <div className="form-grid">
-                        <div className="form-field"><label>{t('colonne_id')} *</label><select value={mapping.id} onChange={e => setMapping({ ...mapping, id: e.target.value })}><option value="">-- {t('choisir')} --</option>{headers.map(h => <option key={h}>{h}</option>)}</select></div>
-                        <div className="form-field"><label>{t('colonne_nom')} *</label><select value={mapping.nom} onChange={e => setMapping({ ...mapping, nom: e.target.value })}><option value="">-- {t('choisir')} --</option>{headers.map(h => <option key={h}>{h}</option>)}</select></div>
-                        <div className="form-field"><label>{t('colonne_description')}</label><select value={mapping.description} onChange={e => setMapping({ ...mapping, description: e.target.value })}><option value="">-- {t('choisir')} --</option>{headers.map(h => <option key={h}>{h}</option>)}</select></div>
-                        <div className="form-field"><label>{t('colonne_etage')}</label><select value={mapping.etage} onChange={e => setMapping({ ...mapping, etage: e.target.value })}><option value="">-- {t('choisir')} --</option>{headers.map(h => <option key={h}>{h}</option>)}</select></div>
+                        <div className="form-field">
+                            <label>{t('colonne_id')} *</label>
+                            <SearchableSelect
+                                name="id"
+                                value={mapping.id}
+                                onChange={e => setMapping({ ...mapping, id: e.target.value })}
+                                options={headerOptions}
+                                placeholder={`-- ${t('choisir')} --`}
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label>{t('colonne_nom')} *</label>
+                            <SearchableSelect
+                                name="nom"
+                                value={mapping.nom}
+                                onChange={e => setMapping({ ...mapping, nom: e.target.value })}
+                                options={headerOptions}
+                                placeholder={`-- ${t('choisir')} --`}
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label>{t('colonne_description')}</label>
+                            <SearchableSelect
+                                name="description"
+                                value={mapping.description}
+                                onChange={e => setMapping({ ...mapping, description: e.target.value })}
+                                options={headerOptions}
+                                placeholder={`-- ${t('choisir')} --`}
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label>{t('colonne_etage')}</label>
+                            <SearchableSelect
+                                name="etage"
+                                value={mapping.etage}
+                                onChange={e => setMapping({ ...mapping, etage: e.target.value })}
+                                options={headerOptions}
+                                placeholder={`-- ${t('choisir')} --`}
+                            />
+                        </div>
                     </div>
-                    <div className="form-actions"><button className="btn-primary" onClick={executeImport}>{t('importer')}</button><button className="btn-secondary" onClick={() => setShowMapping(false)}>{t('annuler')}</button></div>
+                    <div className="form-actions">
+                        <button className="btn-primary" onClick={executeImport}>{t('importer')}</button>
+                        <button className="btn-secondary" onClick={() => setShowMapping(false)}>{t('annuler')}</button>
+                    </div>
                 </div>
             )}
 
@@ -200,12 +242,27 @@ function GererServices() {
                     <h3>{editingId ? t('modifier_service') : t('ajouter_service')}</h3>
                     <form onSubmit={handleSubmit}>
                         <div className="form-grid">
-                            <div className="form-field"><label>{t('id')} *</label><input type="number" value={form.idService} onChange={e => setForm({ ...form, idService: e.target.value })} required disabled={!!editingId} /></div>
-                            <div className="form-field"><label>{t('nom')} *</label><input value={form.nomService} onChange={e => setForm({ ...form, nomService: e.target.value })} required /></div>
-                            <div className="form-field"><label>{t('description')}</label><input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
-                            <div className="form-field"><label>{t('etage')}</label><input value={form.etage} onChange={e => setForm({ ...form, etage: e.target.value })} /></div>
+                            <div className="form-field">
+                                <label>{t('id')} *</label>
+                                <input type="number" value={form.idService} onChange={e => setForm({ ...form, idService: e.target.value })} required disabled={!!editingId} className="form-input" />
+                            </div>
+                            <div className="form-field">
+                                <label>{t('nom')} *</label>
+                                <input value={form.nomService} onChange={e => setForm({ ...form, nomService: e.target.value })} required className="form-input" />
+                            </div>
+                            <div className="form-field">
+                                <label>{t('description')}</label>
+                                <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="form-input" />
+                            </div>
+                            <div className="form-field">
+                                <label>{t('etage')}</label>
+                                <input value={form.etage} onChange={e => setForm({ ...form, etage: e.target.value })} className="form-input" />
+                            </div>
                         </div>
-                        <div className="form-actions"><button type="submit" className="btn-primary">{editingId ? t('modifier') : t('ajouter')}</button>{editingId && <button type="button" className="btn-secondary" onClick={resetForm}>{t('annuler')}</button>}</div>
+                        <div className="form-actions">
+                            <button type="submit" className="btn-primary">{editingId ? t('modifier') : t('ajouter')}</button>
+                            {editingId && <button type="button" className="btn-secondary" onClick={resetForm}>{t('annuler')}</button>}
+                        </div>
                     </form>
                 </div>
             )}
@@ -214,7 +271,7 @@ function GererServices() {
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
                     <div className="rows-per-page">
                         <span>{t('afficher')}</span>
-                        <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
+                        <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="form-input" style={{ width: 'auto' }}>
                             <option value={5}>5</option><option value={10}>10</option><option value={15}>15</option><option value={20}>20</option>
                         </select>
                         <span>{t('lignes')}</span>

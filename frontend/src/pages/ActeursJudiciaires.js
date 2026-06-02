@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import DocumentModal from '../components/DocumentModal';
+import SearchableSelect from './SearchableSelect'; // new custom combobox
 
 function ActeursJudiciaires() {
   const { t, i18n } = useTranslation();
@@ -44,7 +45,6 @@ function ActeursJudiciaires() {
         setDocumentStates(res.data.sort((a, b) => a.displayOrder - b.displayOrder));
       } catch (err) {
         console.error('Failed to load document states', err);
-        // No fallback – dropdown will be empty if API fails
       }
     };
     fetchStates();
@@ -82,7 +82,7 @@ function ActeursJudiciaires() {
         data = data.filter(item => {
           const itemDate = new Date(item.date);
           if (debut && itemDate < debut) return false;
-          if (fin && itemDate > new Date(fin).setHours(23,59,59,999)) return false;
+          if (fin && itemDate > new Date(fin).setHours(23, 59, 59, 999)) return false;
           return true;
         });
       }
@@ -125,6 +125,12 @@ function ActeursJudiciaires() {
     return locale === 'ar' ? state.valueAr : state.valueFr;
   };
 
+  // Prepare options for the "etat" SearchableSelect
+  const etatOptions = documentStates.map(state => ({
+    value: state.code,
+    label: locale === 'ar' ? state.valueAr : state.valueFr
+  }));
+
   return (
     <div className="page-container" dir="rtl">
       <h1 className="page-title">{t('menu_acteurs_judiciaires') || 'السجل القضائي'}</h1>
@@ -136,38 +142,68 @@ function ActeursJudiciaires() {
         <div className="form-grid">
           <div className="form-field">
             <label>{t('numero_dossier') || 'رقم الملف'}</label>
-            <input value={search.numeroDossier} onChange={e => setSearch({...search, numeroDossier: e.target.value})} placeholder="2026/15/3" />
+            <input
+              value={search.numeroDossier}
+              onChange={e => setSearch({ ...search, numeroDossier: e.target.value })}
+              placeholder="2026/15/3"
+              className="form-input"
+            />
           </div>
           <div className="form-field">
             <label>{t('numero_premiere_instance') || 'الرقم الابتدائي'}</label>
-            <input value={search.numeroPremiereInstance} onChange={e => setSearch({...search, numeroPremiereInstance: e.target.value})} placeholder="2026/7209/1" />
+            <input
+              value={search.numeroPremiereInstance}
+              onChange={e => setSearch({ ...search, numeroPremiereInstance: e.target.value })}
+              placeholder="2026/7209/1"
+              className="form-input"
+            />
           </div>
           <div className="form-field">
             <label>{t('tribunal_source') || 'المحكمة/المصدر'}</label>
-            <input value={search.tribunalSource} onChange={e => setSearch({...search, tribunalSource: e.target.value})} />
+            <input
+              value={search.tribunalSource}
+              onChange={e => setSearch({ ...search, tribunalSource: e.target.value })}
+              className="form-input"
+            />
           </div>
           <div className="form-field">
             <label>{t('objet') || 'الموضوع'}</label>
-            <input value={search.sujet} onChange={e => setSearch({...search, sujet: e.target.value})} />
+            <input
+              value={search.sujet}
+              onChange={e => setSearch({ ...search, sujet: e.target.value })}
+              className="form-input"
+            />
           </div>
+
+          {/* REPLACED native select with SearchableSelect */}
           <div className="form-field">
             <label>{t('etat') || 'الحالة'}</label>
-            <select value={search.etat} onChange={e => setSearch({...search, etat: e.target.value})}>
-              <option value="">{t('tous_etats') || 'الكل'}</option>
-              {documentStates.map(state => (
-                <option key={state.code} value={state.code}>
-                  {locale === 'ar' ? state.valueAr : state.valueFr}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              name="etat"
+              value={search.etat}
+              onChange={e => setSearch({ ...search, etat: e.target.value })}
+              options={etatOptions}
+              placeholder={t('tous_etats') || 'الكل'}
+            />
           </div>
+
           <div className="form-field">
             <label>{t('date_debut') || 'من تاريخ'}</label>
-            <input type="date" value={search.dateDebut} onChange={e => setSearch({...search, dateDebut: e.target.value})} />
+            <input
+              type="date"
+              value={search.dateDebut}
+              onChange={e => setSearch({ ...search, dateDebut: e.target.value })}
+              className="form-input"
+            />
           </div>
           <div className="form-field">
             <label>{t('date_fin') || 'إلى تاريخ'}</label>
-            <input type="date" value={search.dateFin} onChange={e => setSearch({...search, dateFin: e.target.value})} />
+            <input
+              type="date"
+              value={search.dateFin}
+              onChange={e => setSearch({ ...search, dateFin: e.target.value })}
+              className="form-input"
+            />
           </div>
         </div>
         <div className="form-actions">
@@ -176,7 +212,7 @@ function ActeursJudiciaires() {
         </div>
       </div>
 
-      {/* Results table */}
+      {/* Results table – unchanged */}
       <div className="data-table-wrapper">
         <table className="modern-table">
           <thead>
@@ -227,7 +263,12 @@ function ActeursJudiciaires() {
   );
 }
 
-function formatDate(v, l) { return v ? new Date(v).toLocaleDateString(l) : '-'; }
-function getErrorMessage(err, fb) { return err.response?.data || err.message || fb; }
+function formatDate(v, l) {
+  return v ? new Date(v).toLocaleDateString(l) : '-';
+}
+
+function getErrorMessage(err, fb) {
+  return err.response?.data || err.message || fb;
+}
 
 export default ActeursJudiciaires;

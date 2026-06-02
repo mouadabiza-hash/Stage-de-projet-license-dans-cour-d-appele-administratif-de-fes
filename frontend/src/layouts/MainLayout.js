@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -7,57 +7,61 @@ function MainLayout({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
-  const currentLanguage = (i18n.resolvedLanguage || i18n.language || 'fr').split('-')[0];
+  const [openMenu, setOpenMenu] = useState(null);
 
   useEffect(() => {
-    document.documentElement.dir = currentLanguage === 'ar' ? 'rtl' : 'ltr';
-    document.documentElement.lang = currentLanguage;
-  }, [currentLanguage]);
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+    document.documentElement.dir = i18n.language === 'ar' ? 'rtl' : 'ltr';
+  }, [i18n.language]);
 
   const changeLanguage = (lng) => {
     i18n.changeLanguage(lng);
     localStorage.setItem('i18nextLng', lng);
   };
 
-  // All possible menu items with roles
-  const allMenuItems = [
-    { labelKey: 'dashboard', icon: 'grid', path: '/dashboard',
-      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe', 'Procedures'] },
-    { labelKey: 'menu_courriers', icon: 'mail', path: '/courriers',
-      roles: ['Admin','Greffier','Enregistrement','Procedures'] },  // ← ADD Enregistrement and Procedures
-    { labelKey: 'menu_archives_juridiques', icon: 'archive', path: '/archives-juridiques',
-      roles: ['Admin','Directeur','Archive'] },
-      { labelKey: 'menu_tous_les_retraits', icon: 'archive', path: '/tout-retraits',
-    roles: ['Admin','Directeur','Archive'] },
-      { labelKey: 'menu_acteurs_judiciaires', icon: 'eye', path: '/acteurs-judiciaires',
-      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive'] },
-    { labelKey: 'mes_entites', icon: 'building', path: '/mes-entites',
-      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe', 'Procedures'] },
-    { labelKey: 'registre_transactions', icon: 'send', path: '/transactions-outgoing',
-      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe', 'Procedures'] },
-    { labelKey: 'notifications', icon: 'bell', path: '/notifications',
-      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe', 'Procedures'] },
-    { labelKey: 'equipements', icon: 'settings', path: '/equipements',
-      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe', 'Procedures'] },
-    { labelKey: 'services', icon: 'service', path: '/services',
-      roles: ['Admin','Directeur'] },
-    { labelKey: 'utilisateurs', icon: 'users', path: '/utilisateurs',
-      roles: ['Admin','Directeur'] },
-    { labelKey: 'dossier_search', icon: 'search', path: '/dossier-search',
-      roles: ['Admin','Directeur','Greffier','Enregistrement','Archive','Employe', 'Procedures'] },
-    { labelKey: 'gestion_listes', icon: 'list', path: '/gestion-listes', roles: ['Admin'] },
-    ];
+  // Structure du menu avec les rôles (comme à l’origine)
+  const menu = [
+    { label: 'dashboard', icon: 'grid', path: '/dashboard', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'] },
+    {
+      label: 'gestion', icon: 'folder', roles: ['Admin', 'Greffier'],
+      children: [
+        { label: 'menu_courriers', path: '/courriers', roles: ['Admin', 'Greffier'] },
+        { label: 'mes_entites', path: '/mes-entites', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'] },
+        { label: 'menu_archives_juridiques', path: '/archives-juridiques', roles: ['Admin', 'Directeur', 'Archive'] },
+        { label: 'menu_tous_les_retraits', path: '/tout-retraits', roles: ['Admin', 'Directeur', 'Archive'] },
+        { label: 'menu_acteurs_judiciaires', path: '/acteurs-judiciaires', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'] },
+        { label: 'dossier_search', path: '/dossier-search', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'] }
 
-  // Filter by user role
-  const menuItems = allMenuItems.filter(item => item.roles.includes(user?.role));
+      ]
+    },
+    {
+      label: 'transactions', icon: 'building', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'],
+      children: [
+        { label: 'registre_transactions', path: '/transactions-outgoing', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'] },
+        { label: 'notifications', path: '/notifications', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'] },
+      ]
+    },
+    {
+      label: 'administration', icon: 'users', roles: ['Admin', 'Directeur'],
+      children: [
+        { label: 'equipements', path: '/equipements', roles: ['Admin', 'Directeur', 'Greffier'] },
+        { label: 'services', path: '/services', roles: ['Admin', 'Directeur'] },
+        { label: 'utilisateurs', path: '/utilisateurs', roles: ['Admin', 'Directeur'] },
+        { label: 'gestion_listes', path: '/gestion-listes', roles: ['Admin'] },
+        { label: 'profil', path: '/profile', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures']  }
 
-  const displayName = user?.nomComplet || user?.login || t('administrateur');
-  const serviceLabel = user?.nomService || 'IT';
+      ]
+    }
+  ];
+
+  const hasAccess = (roles) => {
+    if (!roles) return true;
+    if (roles === '*') return true;
+    return roles.includes(user?.role);
+  };
+
+  const toggleMenu = (idx) => {
+    setOpenMenu(openMenu === idx ? null : idx);
+  };
 
   return (
     <div className="app-layout">
@@ -65,21 +69,54 @@ function MainLayout({ children }) {
         <div className="sidebar-brand"><div className="brand-mark">⚖</div></div>
         <div className="user-info">
           <div className="user-avatar"></div>
-          <div><strong>{displayName}</strong><span>{serviceLabel}</span><small>{t('connecte')}</small></div>
+          <div>
+            <strong>{user?.nomComplet || user?.login}</strong>
+            <span>{user?.nomService || 'IT'}</span>
+            <small>{t('connecte')}</small>
+          </div>
         </div>
         <div className="language-switcher">
-          <button onClick={() => changeLanguage('fr')} className={currentLanguage === 'fr' ? 'active' : ''}><strong>FR</strong><span>FR</span></button>
-          <button onClick={() => changeLanguage('ar')} className={currentLanguage === 'ar' ? 'active' : ''}><strong>AR</strong><span>SA</span></button>
+          <button onClick={() => changeLanguage('fr')} className={i18n.language === 'fr' ? 'active' : ''}>FR</button>
+          <button onClick={() => changeLanguage('ar')} className={i18n.language === 'ar' ? 'active' : ''}>AR</button>
         </div>
         <nav className="sidebar-nav">
-          {menuItems.map((item) => (
-            <NavLink key={item.path} to={item.path} className={({ isActive }) => (isActive ? 'active' : '')}>
-              <span className={`nav-icon nav-icon-${item.icon}`}></span>
-              <span>{t(item.labelKey)}</span>
-            </NavLink>
-          ))}
+          {menu.map((item, idx) => {
+            // Élément sans enfant (simple lien)
+            if (item.path) {
+              if (!hasAccess(item.roles)) return null;
+              return (
+                <NavLink key={idx} to={item.path} className="main-menu-item">
+                  <span className={`nav-icon nav-icon-${item.icon}`}></span>
+                  <span>{t(item.label)}</span>
+                </NavLink>
+              );
+            }
+
+            // Élément avec enfants
+            const visibleChildren = item.children.filter(child => hasAccess(child.roles));
+            if (visibleChildren.length === 0) return null;
+            const isOpen = openMenu === idx;
+
+            return (
+              <div key={idx} className="menu-parent">
+                <div className="main-menu-item" onClick={() => toggleMenu(idx)}>
+                  <span className={`nav-icon nav-icon-${item.icon}`}></span>
+                  <span>{t(item.label)}</span>
+                  <span className={`submenu-arrow ${isOpen ? 'open' : ''}`}>▼</span>
+                </div>
+                <div className={`submenu ${isOpen ? 'open' : ''}`}>
+                  {visibleChildren.map(child => (
+                    <NavLink key={child.path} to={child.path} onClick={() => setOpenMenu(null)}>
+                      <span className="submenu-icon">•</span>
+                      <span>{t(child.label)}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
-        <button onClick={handleLogout} className="logout-btn">
+        <button onClick={logout} className="logout-btn">
           <span className="nav-icon nav-icon-logout"></span>
           <span>{t('deconnexion')}</span>
         </button>

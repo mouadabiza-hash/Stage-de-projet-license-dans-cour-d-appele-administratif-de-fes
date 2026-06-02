@@ -4,9 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../hooks/usePermissions';
 import { useAuth } from '../context/AuthContext';
 import DocumentModal from '../components/DocumentModal';
+import SearchableSelect from './SearchableSelect';
 
 function MesEntites() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language;
   const perms = usePermissions();
   const { user } = useAuth();
   const serviceId = user?.idService;
@@ -16,16 +18,16 @@ function MesEntites() {
   const [allUsers, setAllUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [hiddenIds, setHiddenIds] = useState([]);
-
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectAllOwn, setSelectAllOwn] = useState(false);
   const [selectAllSub, setSelectAllSub] = useState(false);
 
-  // Choice modal
+  // Hidden documents modal
+  const [showHiddenModal, setShowHiddenModal] = useState(false);
+
+  // Transfer state (full)
   const [showTransferChoice, setShowTransferChoice] = useState(false);
   const [transferChoiceDoc, setTransferChoiceDoc] = useState(null);
-
-  // Multi transfer modal
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferTarget, setTransferTarget] = useState(null);
   const [bulkTransferDocs, setBulkTransferDocs] = useState([]);
@@ -34,8 +36,6 @@ function MesEntites() {
   const [transferCurrentUserIds, setTransferCurrentUserIds] = useState([]);
   const [transferMessage, setTransferMessage] = useState('');
   const [transferDoitRevenir, setTransferDoitRevenir] = useState(false);
-
-  // Single transfer modal (judicial)
   const [showSingleTransferModal, setShowSingleTransferModal] = useState(false);
   const [singleTransferTarget, setSingleTransferTarget] = useState(null);
   const [singleTransferServiceId, setSingleTransferServiceId] = useState('');
@@ -43,29 +43,84 @@ function MesEntites() {
   const [singleTransferUserId, setSingleTransferUserId] = useState('');
   const [singleTransferDoitRevenir, setSingleTransferDoitRevenir] = useState(false);
   const [singleTransferMessage, setSingleTransferMessage] = useState('');
+  const [singleTransferDocType, setSingleTransferDocType] = useState('Judiciaire');
 
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  // Add / Edit modal
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [editingDoc, setEditingDoc] = useState(null);
+  const [formMode, setFormMode] = useState('file');
+  const [editOnlyNumeroDossier, setEditOnlyNumeroDossier] = useState(false);
+  const [formData, setFormData] = useState({
+    numeroDossier: '', tribunalSource: '', sujet: '', date: new Date().toISOString().slice(0,10),
+    description: '', lienPdf: '', numeroPremiereInstance: '', etat: 'Nouveau',
+    parentJudiciaireId: '', typeJudiciaire: '', linkedDocumentType: '', linkedDocumentSource: ''
+  });
+  const [parentFiles, setParentFiles] = useState([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [formSuccess, setFormSuccess] = useState('');
+
+  // Dynamic lists
+  const [documentStates, setDocumentStates] = useState([]);
+  const [tribunalTypes, setTribunalTypes] = useState([]);
+  const [judicialTypes, setJudicialTypes] = useState([]);
+  const [linkedDocTypes, setLinkedDocTypes] = useState([]);
+  const [linkedDocSourceOptions, setLinkedDocSourceOptions] = useState([]);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalDocument, setModalDocument] = useState(null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   const [rowsPerPageOwn, setRowsPerPageOwn] = useState(10);
   const [currentPageOwn, setCurrentPageOwn] = useState(1);
   const [rowsPerPageSub, setRowsPerPageSub] = useState(10);
   const [currentPageSub, setCurrentPageSub] = useState(1);
 
-  // Load hidden IDs from localStorage
+  // Memoized options
+  const tribunalOptions = useMemo(() => 
+    tribunalTypes.map(tt => ({ value: tt.code, label: locale === 'ar' ? tt.valueAr : tt.valueFr })), [tribunalTypes, locale]);
+  const etatOptions = useMemo(() => 
+    documentStates.map(s => ({ value: s.code, label: locale === 'ar' ? s.valueAr : s.valueFr })), [documentStates, locale]);
+  const judicialTypeOptions = useMemo(() => 
+    judicialTypes.map(jt => ({ value: jt.code, label: locale === 'ar' ? jt.valueAr : jt.valueFr })), [judicialTypes, locale]);
+  const linkedDocOptions = useMemo(() => 
+    linkedDocTypes.map(ld => ({ value: ld.code, label: locale === 'ar' ? ld.valueAr : ld.valueFr })), [linkedDocTypes, locale]);
+  const linkedDocSourceOpts = useMemo(() => 
+    linkedDocSourceOptions.map(ls => ({ value: ls.code, label: locale === 'ar' ? ls.valueAr : ls.valueFr })), [linkedDocSourceOptions, locale]);
+
+  // Fetch lists (including the new LinkedDocumentSource)
+  useEffect(() => {
+    const fetchLists = async () => {
+      try {
+        const [statesRes, tribunalRes, judicialRes, linkedDocRes, linkedDocSourceRes] = await Promise.all([
+          axios.get('/api/ListItems?listName=DocumentState'),
+          axios.get('/api/ListItems?listName=TribunalType'),
+          axios.get('/api/ListItems?listName=JudicialType'),
+          axios.get('/api/ListItems?listName=LinkedDocumentType'),
+          axios.get('/api/ListItems?listName=LinkedDocumentSource')
+        ]);
+        setDocumentStates(statesRes.data.sort((a,b)=>a.displayOrder-b.displayOrder));
+        setTribunalTypes(tribunalRes.data.sort((a,b)=>a.displayOrder-b.displayOrder));
+        setJudicialTypes(judicialRes.data.sort((a,b)=>a.displayOrder-b.displayOrder));
+        setLinkedDocTypes(linkedDocRes.data.sort((a,b)=>a.displayOrder-b.displayOrder));
+        setLinkedDocSourceOptions(linkedDocSourceRes.data.sort((a,b)=>a.displayOrder-b.displayOrder));
+      } catch (err) { console.error(err); setError(t('erreur_chargement_donnees')); }
+    };
+    fetchLists();
+  }, []);
+
+  // Hidden documents
   useEffect(() => {
     const stored = localStorage.getItem('hiddenMesEntites');
     if (stored) setHiddenIds(JSON.parse(stored));
   }, []);
 
-  // Filter out hidden documents
+  // Fetch main data
+  useEffect(() => { fetchDocuments(); fetchServices(); fetchAllUsers(); }, []);
+
   const visibleDocuments = useMemo(() => {
-    return allDocuments.filter(doc => {
-      const key = `${doc.idEntite}_${doc.type || doc.Type}`;
-      return !hiddenIds.includes(key);
-    });
+    return allDocuments.filter(doc => !hiddenIds.includes(`${doc.idEntite}_${doc.type || doc.Type}`));
   }, [allDocuments, hiddenIds]);
 
   const filteredDocuments = useMemo(() => {
@@ -80,41 +135,57 @@ function MesEntites() {
     );
   }, [visibleDocuments, searchTerm]);
 
-  const ownDocuments = filteredDocuments.filter(d => !d.isSubstitute);
-  const subDocuments = filteredDocuments.filter(d => d.isSubstitute);
+  const ownDocuments = useMemo(() => filteredDocuments.filter(d => !d.isSubstitute), [filteredDocuments]);
+  const subDocuments = useMemo(() => filteredDocuments.filter(d => d.isSubstitute), [filteredDocuments]);
 
-  useEffect(() => { fetchDocuments(); fetchServices(); fetchAllUsers(); }, []);
   useEffect(() => { setCurrentPageOwn(1); }, [ownDocuments.length]);
   useEffect(() => { setCurrentPageSub(1); }, [subDocuments.length]);
 
   const fetchDocuments = async () => {
-    try {
-      const res = await axios.get('/api/documents');
-      setAllDocuments(res.data);
-      setError('');
-    } catch (err) {
-      setError(t('erreur_chargement'));
+    try { 
+      const res = await axios.get('/api/documents'); 
+      setAllDocuments(res.data); 
+      setError(''); 
+    } catch (err) { 
+      setError(t('erreur_chargement')); 
+      console.error('fetchDocuments error', err);
     }
   };
   const fetchServices = async () => {
-    try {
-      const res = await axios.get('/api/services');
-      setServices(res.data);
-    } catch (err) {}
+    try { const res = await axios.get('/api/services'); setServices(res.data); } catch {}
   };
   const fetchAllUsers = async () => {
-    try {
-      const res = await axios.get('/api/utilisateurs');
-      setAllUsers(res.data);
-    } catch (err) {}
+    try { const res = await axios.get('/api/utilisateurs'); setAllUsers(res.data); } catch {}
+  };
+  const fetchParents = async () => {
+    try { const res = await axios.get('/api/acteursjudiciaires/parents'); setParentFiles(res.data); } 
+    catch { setError(t('erreur_chargement_parents')); }
   };
 
+  // ---------- Hide / Restore ----------
   const handleHide = (doc) => {
     const key = `${doc.idEntite}_${doc.type || doc.Type}`;
-    const newHidden = [...hiddenIds, key];
+    setHiddenIds([...hiddenIds, key]);
+    localStorage.setItem('hiddenMesEntites', JSON.stringify([...hiddenIds, key]));
+    setSelectedIds(prev => prev.filter(id => id !== key));
+  };
+
+  const handleBulkHide = (docs) => {
+    const newHidden = [...hiddenIds];
+    docs.forEach(doc => {
+      const key = `${doc.idEntite}_${doc.type || doc.Type}`;
+      if (!newHidden.includes(key)) newHidden.push(key);
+    });
     setHiddenIds(newHidden);
     localStorage.setItem('hiddenMesEntites', JSON.stringify(newHidden));
-    setSelectedIds(prev => prev.filter(id => id !== key));
+    setSelectedIds(prev => prev.filter(id => !docs.map(d => `${d.idEntite}_${d.type || d.Type}`).includes(id)));
+    setSuccess(t('documents_masques') || 'Documents masqués');
+  };
+
+  const handleRestore = (key) => {
+    const newHidden = hiddenIds.filter(id => id !== key);
+    setHiddenIds(newHidden);
+    localStorage.setItem('hiddenMesEntites', JSON.stringify(newHidden));
   };
 
   const handleArchive = async (doc) => {
@@ -127,145 +198,143 @@ function MesEntites() {
       else await axios.put(`/api/acteursjudiciaires/archiver/${docId}`);
       setSuccess(t('archivage_succes'));
       fetchDocuments();
-    } catch (err) {
-      setError(t('erreur_archivage'));
-    }
+    } catch { setError(t('erreur_archivage')); }
   };
 
-  // ---------- Multi transfer ----------
-  const openTransferModal = (doc) => {
-    setTransferTarget(doc);
-    setBulkTransferDocs([]);
-    setTransferSelections([]);
-    setTransferCurrentService('');
-    setTransferCurrentUserIds([]);
-    setTransferMessage('');
-    setTransferDoitRevenir(false);
-    setShowTransferModal(true);
-  };
-
-  const openBulkTransferModal = (docs) => {
-    if (docs.length === 0) return;
-    setTransferTarget(null);
-    setBulkTransferDocs(docs);
-    setTransferSelections([]);
-    setTransferCurrentService('');
-    setTransferCurrentUserIds([]);
-    setTransferMessage('');
-    setTransferDoitRevenir(false);
-    setShowTransferModal(true);
-  };
-
-  const handleTransferServiceChange = (svcId) => {
-    setTransferCurrentService(svcId);
-    setTransferCurrentUserIds([]);
-  };
-  const toggleCurrentUser = (userId) => {
-    setTransferCurrentUserIds(prev =>
-      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
-    );
-  };
-  const addCurrentSelection = () => {
-    if (!transferCurrentService || transferCurrentUserIds.length === 0) return;
-    setTransferSelections(prev => {
-      const existing = prev.find(s => s.serviceId === transferCurrentService);
-      if (existing) {
-        return prev.map(s => s.serviceId === transferCurrentService
-          ? { ...s, userIds: [...new Set([...s.userIds, ...transferCurrentUserIds])] }
-          : s);
-      }
-      return [...prev, { serviceId: transferCurrentService, userIds: [...transferCurrentUserIds] }];
+  // ---------- Add / Edit modal ----------
+  const openAddModal = () => {
+    setEditingDoc(null);
+    const isProcedures = user?.role === 'Procedures';
+    const defaultMode = isProcedures ? 'linked' : 'file';
+    setFormMode(defaultMode);
+    setEditOnlyNumeroDossier(false);
+    setFormData({
+      numeroDossier: '', tribunalSource: '', sujet: '', date: new Date().toISOString().slice(0,10),
+      description: '', lienPdf: '', numeroPremiereInstance: '', etat: 'Nouveau',
+      parentJudiciaireId: '', typeJudiciaire: '', linkedDocumentType: '', linkedDocumentSource: ''
     });
-    setTransferCurrentService('');
-    setTransferCurrentUserIds([]);
-  };
-  const removeSelection = (serviceId) => {
-    setTransferSelections(prev => prev.filter(s => s.serviceId !== serviceId));
+    if (defaultMode === 'linked') fetchParents();
+    setFormError(''); setFormSuccess('');
+    setShowFormModal(true);
   };
 
-  const handleMultiTransfer = async () => {
-    const allUserIds = transferSelections.flatMap(s => s.userIds);
-    if (allUserIds.length === 0) {
-      setError(t('selection_requise'));
-      return;
-    }
-    const docs = bulkTransferDocs.length > 0 ? bulkTransferDocs : [transferTarget];
+  const openEditModal = (doc) => {
+    if (doc.type !== 'Judiciaire') return;
+    if (user?.role === 'Procedures') return;
+
+    setEditingDoc(doc);
+    const isLinked = doc.estDocumentLie === true;
+    setFormMode(isLinked ? 'linked' : 'file');
+    
+    const isEnregistrement = user?.role === 'Enregistrement';
+    setEditOnlyNumeroDossier(isEnregistrement);
+    
+    setFormData({
+      numeroDossier: doc.numeroDossierJudiciaire || '',
+      tribunalSource: doc.source || '',
+      sujet: doc.sujet || '',
+      date: doc.dateCreation ? doc.dateCreation.slice(0,10) : new Date().toISOString().slice(0,10),
+      description: doc.description || '',
+      lienPdf: doc.lienPdf || '',
+      numeroPremiereInstance: doc.numeroPremiereInstance || '',
+      etat: doc.etatArchive || 'Nouveau',
+      parentJudiciaireId: doc.parentJudiciaireId || '',
+      typeJudiciaire: doc.typeJudiciaire || '',
+      linkedDocumentType: doc.linkedDocumentType || '',
+      linkedDocumentSource: doc.linkedDocumentSource || ''
+    });
+    if (isLinked) fetchParents();
+    setFormError(''); setFormSuccess('');
+    setShowFormModal(true);
+  };
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSelectChange = (name, selected) => {
+    setFormData(prev => ({ ...prev, [name]: selected?.value || '' }));
+  };
+
+  const handleFormUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fd = new FormData(); fd.append('file', file);
+    setUploadingFile(true);
     try {
-      for (let doc of docs) {
-        await axios.post('/api/transactions/batch', {
-          documentId: doc.idEntite,
-          documentType: doc.type || doc.Type,
-          destinationUserIds: allUserIds,
-          doitRevenir: transferDoitRevenir,
-          message: transferMessage
-        });
+      const res = await axios.post('/api/acteursjudiciaires/upload-pdf', fd);
+      setFormData(prev => ({ ...prev, lienPdf: res.data.lienPdf }));
+      setFormSuccess(t('document_uploaded'));
+      setTimeout(() => setFormSuccess(''), 3000);
+    } catch (err) { setFormError(getErrorMessage(err, t('erreur_upload'))); }
+    finally { setUploadingFile(false); e.target.value = ''; }
+  };
+
+  const submitForm = async () => {
+    setFormError('');
+    
+    if (editOnlyNumeroDossier && editingDoc) {
+      if (!formData.numeroDossier) {
+        setFormError(t('numero_dossier_obligatoire') || 'رقم الاستئنافي مطلوب');
+        return;
       }
-      setSuccess(t('transaction_envoyee'));
-      setShowTransferModal(false);
-      fetchDocuments();
-    } catch (err) {
-      setError(err.response?.data || t('erreur_transaction'));
-    }
-  };
-
-  // ---------- Single transfer (judicial) ----------
-  const openSingleTransferModal = (doc) => {
-    setSingleTransferTarget(doc);
-    setSingleTransferServiceId('');
-    setSingleTransferUsers([]);
-    setSingleTransferUserId('');
-    setSingleTransferDoitRevenir(false);
-    setSingleTransferMessage('');
-    setShowSingleTransferModal(true);
-  };
-
-  const handleSingleServiceChange = async (svcId) => {
-    setSingleTransferServiceId(svcId);
-    setSingleTransferUsers([]);
-    setSingleTransferUserId('');
-    if (!svcId) return;
-    try {
-      const res = await axios.get(`/api/utilisateurs?serviceId=${svcId}`);
-      setSingleTransferUsers(res.data);
-    } catch (err) {
-      setError(t('erreur_chargement'));
-    }
-  };
-
-  const handleSingleTransfer = async () => {
-    if (!singleTransferTarget || !singleTransferUserId) {
-      setError(t('selection_requise'));
+      const payload = { numeroDossier: formData.numeroDossier };
+      try {
+        await axios.put(`/api/acteursjudiciaires/${editingDoc.idEntite}`, payload);
+        setFormSuccess(t('modification_succes'));
+        setTimeout(() => { setShowFormModal(false); fetchDocuments(); }, 1500);
+      } catch (err) { setFormError(getErrorMessage(err, t('erreur_enregistrement'))); }
       return;
     }
+    
+    if (!formData.sujet || !formData.date) { setFormError(t('champs_obligatoires')); return; }
+    if (formMode === 'file' && !formData.tribunalSource) { setFormError(t('tribunal_source_requis')); return; }
+    if (formMode === 'linked' && !formData.parentJudiciaireId) { setFormError(t('parent_requis')); return; }
+
+    const payload = {
+      date: new Date(formData.date).toISOString(),
+      tribunalSource: formMode === 'file' ? formData.tribunalSource : '',
+      sujet: formData.sujet,
+      direction: 'Entrant',
+      description: formData.description,
+      etatArchive: formData.etat,
+      lienPdf: formData.lienPdf,
+      idService: serviceId,
+      estTransmissible: true,
+      numeroPremiereInstance: formData.numeroPremiereInstance || null,
+      estDocumentLie: formMode === 'linked',
+      parentJudiciaireId: formMode === 'linked' ? Number(formData.parentJudiciaireId) : null,
+      destinataire: 'محكمة الاستئناف',
+      numeroDossier: formMode === 'file' ? formData.numeroDossier : null,
+      typeJudiciaire: formMode === 'file' ? formData.typeJudiciaire : null,
+      linkedDocumentType: formMode === 'linked' ? formData.linkedDocumentType : null,
+      linkedDocumentSource: formMode === 'linked' ? formData.linkedDocumentSource : null
+    };
+
     try {
-      await axios.post('/api/transactions', {
-        documentId: singleTransferTarget.idEntite,
-        documentType: singleTransferTarget.type || singleTransferTarget.Type,
-        destinationServiceId: null,
-        destinationUserId: Number(singleTransferUserId),
-        doitRevenir: singleTransferDoitRevenir,
-        message: singleTransferMessage
-      });
-      setSuccess(t('transaction_envoyee'));
-      setShowSingleTransferModal(false);
-      fetchDocuments();
-    } catch (err) {
-      setError(err.response?.data || t('erreur_transaction'));
+      if (editingDoc) await axios.put(`/api/acteursjudiciaires/${editingDoc.idEntite}`, payload);
+      else await axios.post('/api/acteursjudiciaires', payload);
+      setFormSuccess(editingDoc ? t('modification_succes') : t('ajout_succes'));
+      setTimeout(() => { setShowFormModal(false); fetchDocuments(); }, 1500);
+    } catch (err) { setFormError(getErrorMessage(err, t('erreur_enregistrement'))); }
+  };
+
+  // Selection helpers for bulk archive
+  const handleSelectAll = (docs, setSelectAllFn, selectAllState) => {
+    if (selectAllState) {
+      setSelectedIds(prev => prev.filter(id => !docs.map(d => `${d.idEntite}_${d.type || d.Type}`).includes(id)));
+    } else {
+      const newIds = docs.map(d => `${d.idEntite}_${d.type || d.Type}`);
+      setSelectedIds(prev => [...new Set([...prev, ...newIds])]);
     }
+    setSelectAllFn(!selectAllState);
   };
-
-  // ---------- Choice ----------
-  const openTransferChoice = (doc) => {
-    setTransferChoiceDoc(doc);
-    setShowTransferChoice(true);
+  const handleSelectOne = (doc) => {
+    const key = `${doc.idEntite}_${doc.type || doc.Type}`;
+    setSelectedIds(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
   };
-  const handleTransferChoice = (mode) => {
-    setShowTransferChoice(false);
-    if (mode === 'single') openSingleTransferModal(transferChoiceDoc);
-    else if (mode === 'multi') openTransferModal(transferChoiceDoc);
-  };
-
-  // ---------- Bulk archive ----------
+  const getSelectedDocs = (docs) => docs.filter(d => selectedIds.includes(`${d.idEntite}_${d.type || d.Type}`));
   const handleBulkArchive = async (docs) => {
     if (!perms.canArchive || docs.length === 0) return;
     if (!window.confirm(`${t('confirmation_archiver')} (${docs.length} documents)`)) return;
@@ -283,32 +352,155 @@ function MesEntites() {
     fetchDocuments();
   };
 
-  // Selection helpers
-  const handleSelectAll = (docs, setSelectAllFn, selectAllState) => {
-    if (selectAllState) {
-      setSelectedIds(prev => prev.filter(id => !docs.map(d => `${d.idEntite}_${d.type || d.Type}`).includes(id)));
-    } else {
-      const newIds = docs.map(d => `${d.idEntite}_${d.type || d.Type}`);
-      setSelectedIds(prev => [...new Set([...prev, ...newIds])]);
+  // ---------- Transfer functions (full) ----------
+  const openTransferModal = (doc) => {
+    setTransferTarget(doc);
+    setBulkTransferDocs([]);
+    setTransferSelections([]);
+    setTransferCurrentService('');
+    setTransferCurrentUserIds([]);
+    setTransferMessage('');
+    setTransferDoitRevenir(false);
+    setShowTransferModal(true);
+  };
+
+  const openSingleTransferModal = (doc, isJudicial) => {
+    setSingleTransferTarget(doc);
+    setSingleTransferDocType(isJudicial ? 'Judiciaire' : 'Administratif');
+    setSingleTransferServiceId('');
+    setSingleTransferUsers([]);
+    setSingleTransferUserId('');
+    setSingleTransferDoitRevenir(false);
+    setSingleTransferMessage('');
+    setShowSingleTransferModal(true);
+  };
+
+  const handleSingleServiceChange = async (svcId) => {
+    setSingleTransferServiceId(svcId);
+    setSingleTransferUsers([]);
+    setSingleTransferUserId('');
+    if (!svcId) return;
+    try {
+      const res = await axios.get(`/api/utilisateurs?serviceId=${svcId}`);
+      setSingleTransferUsers(res.data);
+    } catch (err) { setError(t('erreur_chargement')); }
+  };
+
+  const handleSingleTransfer = async () => {
+    if (!singleTransferTarget || !singleTransferUserId) {
+      setError(t('selection_requise'));
+      return;
     }
-    setSelectAllFn(!selectAllState);
+    try {
+      await axios.post('/api/transactions', {
+        documentId: singleTransferTarget.idEntite,
+        documentType: singleTransferDocType,
+        destinationServiceId: null,
+        destinationUserId: Number(singleTransferUserId),
+        doitRevenir: singleTransferDoitRevenir,
+        message: singleTransferMessage
+      });
+      setSuccess(t('transaction_envoyee'));
+      setShowSingleTransferModal(false);
+      fetchDocuments();
+    } catch (err) { setError(err.response?.data || t('erreur_transaction')); }
   };
-  const handleSelectOne = (doc) => {
-    const key = `${doc.idEntite}_${doc.type || doc.Type}`;
-    setSelectedIds(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+
+  const openTransferChoice = (doc) => {
+    setTransferChoiceDoc(doc);
+    setShowTransferChoice(true);
   };
-  const getSelectedDocs = (docs) => docs.filter(d => selectedIds.includes(`${d.idEntite}_${d.type || d.Type}`));
+
+  const handleTransferChoice = (mode) => {
+    setShowTransferChoice(false);
+    if (mode === 'single') openSingleTransferModal(transferChoiceDoc, false);
+    else openTransferModal(transferChoiceDoc);
+  };
+
+  const handleTransferServiceChange = (svcId) => {
+    setTransferCurrentService(svcId);
+    setTransferCurrentUserIds([]);
+  };
+
+  const toggleCurrentUser = (userId) => {
+    setTransferCurrentUserIds(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const addCurrentSelection = () => {
+    if (!transferCurrentService || transferCurrentUserIds.length === 0) return;
+    setTransferSelections(prev => {
+      const existing = prev.find(s => s.serviceId === transferCurrentService);
+      if (existing) {
+        return prev.map(s => s.serviceId === transferCurrentService
+          ? { ...s, userIds: [...new Set([...s.userIds, ...transferCurrentUserIds])] }
+          : s);
+      }
+      return [...prev, { serviceId: transferCurrentService, userIds: [...transferCurrentUserIds] }];
+    });
+    setTransferCurrentService('');
+    setTransferCurrentUserIds([]);
+  };
+
+  const removeSelection = (serviceId) => {
+    setTransferSelections(prev => prev.filter(s => s.serviceId !== serviceId));
+  };
+
+  const handleMultiTransfer = async () => {
+    const allUserIds = transferSelections.flatMap(s => s.userIds);
+    const docs = bulkTransferDocs.length > 0 ? bulkTransferDocs : (transferTarget ? [transferTarget] : []);
+    if (allUserIds.length === 0 || docs.length === 0) {
+      setError(t('selection_requise'));
+      return;
+    }
+    try {
+      for (let doc of docs) {
+        await axios.post('/api/transactions/batch', {
+          documentId: doc.idEntite,
+          documentType: doc.type || doc.Type,
+          destinationUserIds: allUserIds,
+          doitRevenir: transferDoitRevenir,
+          message: transferMessage
+        });
+      }
+      setSuccess(t('transaction_envoyee'));
+      setShowTransferModal(false);
+      fetchDocuments();
+    } catch (err) {
+      console.error('Batch transfer error:', err);
+      setError(err.response?.data?.message || t('erreur_transaction'));
+    }
+  };
+
+  const openBulkTransferModal = (docs) => {
+    if (docs.length === 0) return;
+    setTransferTarget(null);
+    setBulkTransferDocs(docs);
+    setTransferSelections([]);
+    setTransferCurrentService('');
+    setTransferCurrentUserIds([]);
+    setTransferMessage('');
+    setTransferDoitRevenir(false);
+    setShowTransferModal(true);
+  };
 
   const handleConsult = async (doc) => {
     try {
       const res = await axios.get(`/api/documents/${doc.idEntite}?type=${encodeURIComponent(doc.type || doc.Type)}`);
       setModalDocument(res.data);
-    } catch {
-      setModalDocument(doc);
-    }
+    } catch { setModalDocument(doc); }
     setIsModalOpen(true);
   };
   const closeModal = () => { setIsModalOpen(false); setModalDocument(null); };
+
+  // Helper to determine transfer button visibility (using hasTransaction)
+  const shouldShowTransferButton = (doc) => {
+    if (!doc.estTransmissible) return false;
+    const isJudicialMain = doc.type === 'Judiciaire' && !doc.estDocumentLie;
+    if (isJudicialMain) return true; // always show for main judicial files
+    return !doc.hasTransaction;
+  };
 
   const renderTable = (title, documents, selectAll, setSelectAllFn, rowsPerPage, currentPage, setCurrentPageFn, setRowsPerPageFn) => {
     const idxLast = currentPage * rowsPerPage;
@@ -316,7 +508,6 @@ function MesEntites() {
     const currentDocs = documents.slice(idxFirst, idxLast);
     const totalPages = Math.ceil(documents.length / rowsPerPage);
     const selectedDocs = getSelectedDocs(documents);
-
     return (
       <div className="data-table-wrapper" style={{ marginBottom: '2rem' }}>
         <h3>{title} ({documents.length})</h3>
@@ -324,32 +515,34 @@ function MesEntites() {
           <div className="bulk-toolbar-left"><span className="bulk-count">{selectedDocs.length} {t('selected')}</span></div>
           <div className="bulk-toolbar-right">
             {perms.canTransfer && (
-              <button className="btn-primary" disabled={selectedDocs.length === 0} onClick={() => openBulkTransferModal(selectedDocs)}>
+              <button className="btn-primary" disabled={selectedDocs.length===0} onClick={()=>openBulkTransferModal(selectedDocs)}>
                 {t('transferer_selection')}
               </button>
             )}
             {perms.canArchive && (
-              <button className="btn-primary" disabled={selectedDocs.length === 0} onClick={() => handleBulkArchive(selectedDocs)}>
+              <button className="btn-primary" disabled={selectedDocs.length===0} onClick={()=>handleBulkArchive(selectedDocs)}>
                 {t('archiver_selection')}
               </button>
             )}
+            <button className="btn-primary" disabled={selectedDocs.length===0} onClick={()=>handleBulkHide(selectedDocs)}>
+              {t('masquer_selection') || 'Masquer la sélection'}
+            </button>
           </div>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+        <div style={{display:'flex', justifyContent:'flex-end', marginBottom:'0.5rem'}}>
           <div className="rows-per-page">
             <span>{t('afficher')}</span>
-            <select value={rowsPerPage} onChange={e => { setRowsPerPageFn(Number(e.target.value)); setCurrentPageFn(1); }}>
+            <select value={rowsPerPage} onChange={e=>{setRowsPerPageFn(Number(e.target.value)); setCurrentPageFn(1);}}>
               <option value={5}>5</option><option value={10}>10</option><option value={15}>15</option><option value={20}>20</option>
             </select>
             <span>{t('lignes')}</span>
           </div>
         </div>
-        <table className="modern-table">
+        <table className="modern-table" style={{ fontSize: '0.95rem', width: '100%' }}>
           <thead>
             <tr>
-              <th style={{ width: 40 }}><input type="checkbox" checked={selectAll} onChange={() => handleSelectAll(documents, setSelectAllFn, selectAll)} /></th>
+              <th style={{width:40}}><input type="checkbox" checked={selectAll} onChange={()=>handleSelectAll(documents, setSelectAllFn, selectAll)}/></th>
               <th>{t('titre')}</th>
-              <th>{t('numero_bureau_ordre')}</th>
               <th>{t('numero_dossier_judiciaire')}</th>
               <th>{t('type')}</th>
               <th>{t('date')}</th>
@@ -360,37 +553,45 @@ function MesEntites() {
           </thead>
           <tbody>
             {currentDocs.length === 0 ? (
-              <tr><td colSpan="9" style={{ textAlign: 'center' }}>{t('aucun_document')}</td></tr>
+              <tr><td colSpan="8" className="text-muted">{t('aucun_document')}  </td> </tr>
             ) : (
               currentDocs.map(doc => {
                 const key = `${doc.idEntite}_${doc.type || doc.Type}`;
-                const isJudicial = doc.type === 'Judiciaire' || doc.Type === 'Judiciaire';
-                // Transfer condition: own service + transmissible + (judicial OR not already transferred)
-                const canTransfer = !doc.estArchive && !doc.isSubstitute && doc.estTransmissible === true && (isJudicial ? true : !doc.hasTransaction);
+                const isJudicial = doc.type === 'Judiciaire';
+                const isLinked = doc.estDocumentLie === true;
+                const canArchive = perms.canArchive && isJudicial && !isLinked;
+                const showTransfer = shouldShowTransferButton(doc);
+                const canTransfer = showTransfer && perms.canTransfer;
                 const showHide = (!doc.estTransmissible || doc.hasTransaction);
+                const showEdit = isJudicial && perms.canCreateJuridique && user?.role !== 'Procedures';
+                const isEnregistrement = user?.role === 'Enregistrement';
                 return (
                   <tr key={key}>
-                    <td><input type="checkbox" checked={selectedIds.includes(key)} onChange={() => handleSelectOne(doc)} /></td>
+                    <td><input type="checkbox" checked={selectedIds.includes(key)} onChange={()=>handleSelectOne(doc)}/></td>
                     <td>{doc.sujet || '-'}</td>
-                    <td>{doc.numeroCourrier || '-'}</td>
                     <td>{doc.numeroDossierJudiciaire || '-'}</td>
-                    <td>{doc.type || doc.Type}</td>
+                    <td>{isJudicial ? (isLinked ? t('judiciaire_linked') : t('judiciaire_file')) : (doc.type || '-')}</td>
                     <td>{doc.dateCreation ? new Date(doc.dateCreation).toLocaleDateString('ar-MA') : '-'}</td>
                     <td>{doc.source || '-'}</td>
                     <td>{doc.destinataire || '-'}</td>
                     <td className="action-icons">
-                      <button onClick={() => handleConsult(doc)}>{t('consulter')}</button>
-                      {canTransfer && perms.canTransfer && (
-                        isJudicial ? (
-                          <button onClick={() => openSingleTransferModal(doc)}>{t('transferer')}</button>
+                      <button onClick={()=>handleConsult(doc)}>{t('consulter')}</button>
+                      {showEdit && (
+                        isEnregistrement ? (
+                          <button onClick={()=>openEditModal(doc)} className="action-btn action-btn-warning">
+                            {t('ajouter_numero_appel') || 'إضافة رقم الاستئنافي'}
+                          </button>
                         ) : (
-                          <button onClick={() => openTransferChoice(doc)}>{t('transferer')}</button>
+                          <button onClick={()=>openEditModal(doc)}>{t('modifier')}</button>
                         )
                       )}
-                      {showHide && (
-                        <button onClick={() => handleHide(doc)}>{t('masquer') || 'إخفاء'}</button>
+                      {canTransfer && perms.canTransfer && (
+                        isJudicial && !isLinked ? 
+                          <button onClick={() => openSingleTransferModal(doc, true)}>{t('transferer')}</button> :
+                          <button onClick={() => openTransferChoice(doc)}>{t('transferer')}</button>
                       )}
-                      {perms.canArchive && <button onClick={() => handleArchive(doc)}>{t('archiver')}</button>}
+                      <button onClick={() => handleHide(doc)}>{t('masquer')}</button>
+                      {canArchive && <button onClick={() => handleArchive(doc)}>{t('archiver')}</button>}
                     </td>
                   </tr>
                 );
@@ -398,11 +599,11 @@ function MesEntites() {
             )}
           </tbody>
         </table>
-        {totalPages > 1 && (
+        {totalPages>1 && (
           <div className="pagination">
-            <button onClick={() => setCurrentPageFn(currentPage - 1)} disabled={currentPage === 1}>{t('precedent')}</button>
+            <button onClick={()=>setCurrentPageFn(currentPage-1)} disabled={currentPage===1}>{t('precedent')}</button>
             <span>{t('page')} {currentPage} / {totalPages}</span>
-            <button onClick={() => setCurrentPageFn(currentPage + 1)} disabled={currentPage === totalPages}>{t('suivant')}</button>
+            <button onClick={()=>setCurrentPageFn(currentPage+1)} disabled={currentPage===totalPages}>{t('suivant')}</button>
           </div>
         )}
       </div>
@@ -415,17 +616,121 @@ function MesEntites() {
       {error && <div className="error-message">{error}</div>}
       {success && <div className="success-message">{success}</div>}
       <div className="filters">
-        <input type="text" placeholder={t('rechercher_document')} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ flex: 1, minWidth: '250px' }} />
-        {searchTerm && <button className="btn-secondary" onClick={() => setSearchTerm('')}>{t('reinitialiser')}</button>}
+        {(user?.role === 'Admin' || user?.role === 'Enregistrement' || user?.role === 'Procedures') && (
+          <button className="btn-primary" onClick={openAddModal}>+ {t('add_document')}</button>
+        )}
+        <input type="text" placeholder={t('rechercher_document')} value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} style={{flex:1, minWidth:'250px'}}/>
+        {searchTerm && <button className="btn-secondary" onClick={()=>setSearchTerm('')}>{t('reinitialiser')}</button>}
+        <button className="btn-secondary" onClick={() => setShowHiddenModal(true)}>
+          📂 {t('hidden_documents') || 'الوثائق المخفية'} ({hiddenIds.length})
+        </button>
       </div>
-
       {renderTable(t('my_documents'), ownDocuments, selectAllOwn, setSelectAllOwn, rowsPerPageOwn, currentPageOwn, setCurrentPageOwn, setRowsPerPageOwn)}
       {subDocuments.length > 0 && renderTable(t('substitute_documents'), subDocuments, selectAllSub, setSelectAllSub, rowsPerPageSub, currentPageSub, setCurrentPageSub, setRowsPerPageSub)}
 
-      {/* Choice Modal */}
+      {/* Add / Edit Modal */}
+      {showFormModal && (
+        <div className="modal-overlay" onClick={()=>setShowFormModal(false)}>
+          <div className="modal" style={{maxWidth:'700px', maxHeight:'85vh', overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+            <div className="registry-panel-header">
+              <h3>{editingDoc ? t('modifier_document') : t('ajouter_document_judiciaire')}</h3>
+              <button className="btn-secondary" onClick={()=>setShowFormModal(false)}>{t('fermer')}</button>
+            </div>
+            {!editingDoc && (
+              <div className="registry-choice sub-choice" style={{marginBottom:'1rem'}}>
+                {perms.canCreateJuridique && user?.role !== 'Procedures' && (
+                  <button type="button" className={`choice-pill ${formMode==='file'?'active':''}`} onClick={()=>{setFormMode('file'); setFormData(prev=>({...prev, tribunalSource:'', parentJudiciaireId:''}));}}>{t('judiciaire_file')}</button>
+                )}
+                {perms.canCreateLinked && (
+                  <button type="button" className={`choice-pill ${formMode==='linked'?'active':''}`} onClick={()=>{setFormMode('linked'); fetchParents(); setFormData(prev=>({...prev, tribunalSource:'', parentJudiciaireId:''}));}}>{t('judiciaire_linked')}</button>
+                )}
+              </div>
+            )}
+            <div className="form-grid">
+              {editOnlyNumeroDossier && editingDoc ? (
+                <div className="form-field full-width">
+                  <label>{t('numero_dossier_judiciaire') || 'رقم الاستئنافي'}</label>
+                  <input type="text" name="numeroDossier" value={formData.numeroDossier} onChange={handleFormChange} placeholder="2026/15/3" className="form-input" />
+                  <small>{t('only_editable_field') || 'هذا الحقل فقط قابل للتعديل'}</small>
+                </div>
+              ) : (
+                <>
+                  {formMode === 'file' && (
+                    <>
+                      <div className="form-field">
+                        <label>{t('numero_dossier_judiciaire') || 'رقم الاستئنافي'}</label>
+                        <input type="text" name="numeroDossier" value={formData.numeroDossier} onChange={handleFormChange} placeholder="2026/15/3" className="form-input" />
+                      </div>
+                      <div className="form-field">
+                        <label>{t('type_judiciaire') || 'نوع الملف'}</label>
+                        <SearchableSelect name="typeJudiciaire" value={formData.typeJudiciaire} onChange={e=>handleSelectChange('typeJudiciaire', e.target.value)} options={judicialTypeOptions} placeholder={t('choisir_ou_ecrire')} />
+                      </div>
+                      <div className="form-field">
+                        <label>{t('tribunal_source')} *</label>
+                        <SearchableSelect name="tribunalSource" value={formData.tribunalSource} onChange={e=>handleSelectChange('tribunalSource', e.target.value)} options={tribunalOptions} placeholder={t('choisir_ou_ecrire')} required />
+                      </div>
+                      <div className="form-field">
+                        <label>{t('numero_premiere_instance') || 'الرقم الابتدائي'}</label>
+                        <input type="text" name="numeroPremiereInstance" value={formData.numeroPremiereInstance} onChange={handleFormChange} placeholder="2026/12" className="form-input" />
+                      </div>
+                    </>
+                  )}
+                  {formMode === 'linked' && (
+                    <>
+                      <div className="form-field">
+                        <label>{t('choisir_dossier_parent')} *</label>
+                        <select name="parentJudiciaireId" value={formData.parentJudiciaireId} onChange={handleFormChange} required>
+                          <option value="">-- {t('choisir')} --</option>
+                          {parentFiles.map(p => <option key={p.id} value={p.id}>{p.numeroDossier}</option>)}
+                        </select>
+                      </div>
+                      <div className="form-field">
+                        <label>{t('linked_document_source') || 'مصدر الوثيقة'} *</label>
+                        <SearchableSelect name="linkedDocumentSource" value={formData.linkedDocumentSource} onChange={e=>handleSelectChange('linkedDocumentSource', e.target.value)} options={linkedDocSourceOpts} placeholder={t('choisir_ou_ecrire')} required />
+                      </div>
+                      <div className="form-field">
+                        <label>{t('linked_document_type') || 'نوع الوثيقة'}</label>
+                        <SearchableSelect name="linkedDocumentType" value={formData.linkedDocumentType} onChange={e=>handleSelectChange('linkedDocumentType', e.target.value)} options={linkedDocOptions} placeholder={t('choisir_ou_ecrire')} />
+                      </div>
+                    </>
+                  )}
+                  <div className="form-field"><label>{t('date')} *</label><input type="date" name="date" value={formData.date} onChange={handleFormChange} required className="form-input" /></div>
+                  <div className="form-field"><label>{t('objet')} *</label><input type="text" name="sujet" value={formData.sujet} onChange={handleFormChange} required className="form-input" /></div>
+                  <div className="form-field"><label>{t('etat')}</label><SearchableSelect name="etat" value={formData.etat} onChange={e=>handleSelectChange('etat', e.target.value)} options={etatOptions} placeholder={t('choisir_ou_ecrire')} /></div>
+                  <div className="form-field full-width"><label>{t('document_pdf_word')}</label><div className="document-control"><label className="document-upload-button">{uploadingFile ? t('uploading') : t('choisir_fichier')}<input type="file" accept=".pdf,.doc,.docx" onChange={handleFormUpload} /></label><div className={formData.lienPdf ? "document-link-preview filled" : "document-link-preview"}><span>{formData.lienPdf ? getDocumentName(formData.lienPdf) : t('aucun_fichier')}</span>{formData.lienPdf && <a href={getDocumentHref(formData.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}</div></div></div>
+                  <div className="form-field full-width"><label>{t('notes')}</label><textarea name="description" value={formData.description} onChange={handleFormChange} rows="3" className="form-input" /></div>
+                </>
+              )}
+            </div>
+            {formError && <div className="error-message">{formError}</div>}
+            {formSuccess && <div className="success-message">{formSuccess}</div>}
+            <div className="form-actions"><button className="btn-primary" onClick={submitForm}>{editingDoc ? t('modifier') : t('ajouter')}</button><button className="btn-secondary" onClick={()=>setShowFormModal(false)}>{t('annuler')}</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* Single Transfer Modal */}
+      {showSingleTransferModal && (
+        <div className="modal-overlay" onClick={() => setShowSingleTransferModal(false)}>
+          <div className="modal" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+            <div className="registry-panel-header">
+              <h3>{t('transferer')} : {singleTransferTarget?.sujet || ''}</h3>
+              <button className="btn-secondary" onClick={() => setShowSingleTransferModal(false)}>{t('fermer')}</button>
+            </div>
+            <div className="form-grid">
+              <div className="form-field"><label>{t('service_destinataire')} *</label><select value={singleTransferServiceId} onChange={e => handleSingleServiceChange(e.target.value)}><option value="">--</option>{services.filter(s => s.idService !== serviceId).map(s => <option key={s.idService} value={s.idService}>{s.nomService}</option>)}</select></div>
+              <div className="form-field"><label>{t('personne')} *</label><select value={singleTransferUserId} onChange={e => setSingleTransferUserId(e.target.value)}><option value="">--</option>{singleTransferUsers.map(u => <option key={u.id} value={u.id}>{u.nomComplet}</option>)}</select></div>
+              <div className="form-field full-width"><label className="checkbox-field"><input type="checkbox" checked={singleTransferDoitRevenir} onChange={e => setSingleTransferDoitRevenir(e.target.checked)} /> {t('doit_revenir')}</label></div>
+              <div className="form-field full-width"><label>{t('message')}</label><textarea value={singleTransferMessage} onChange={e => setSingleTransferMessage(e.target.value)} rows="3" /></div>
+            </div>
+            <div className="form-actions"><button className="btn-primary" onClick={handleSingleTransfer}>{t('envoyer')}</button><button className="btn-secondary" onClick={() => setShowSingleTransferModal(false)}>{t('annuler')}</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Choice Modal */}
       {showTransferChoice && (
-        <>
-          <div className="modal-overlay" onClick={() => setShowTransferChoice(false)} />
+        <div className="modal-overlay" onClick={() => setShowTransferChoice(false)}>
           <div className="modal" style={{ maxWidth: '400px' }}>
             <div className="registry-panel-header">
               <h3>{t('transfer_choice_title') || 'اختر طريقة الإحالة'}</h3>
@@ -436,14 +741,13 @@ function MesEntites() {
               <button className="btn-primary" onClick={() => handleTransferChoice('multi')}>{t('transfer_to_many') || 'إلى عدة أشخاص'}</button>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* Multi Transfer Modal */}
       {showTransferModal && (
-        <>
-          <div className="modal-overlay" onClick={() => setShowTransferModal(false)} />
-          <div className="modal" style={{ maxWidth: '650px', maxHeight: '85vh', overflowY: 'auto' }}>
+        <div className="modal-overlay" onClick={() => setShowTransferModal(false)}>
+          <div className="modal" style={{ maxWidth: '650px', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div className="registry-panel-header">
               <h3>{bulkTransferDocs.length > 0 ? `${t('transferer')} ${bulkTransferDocs.length} documents` : `${t('transferer')} : ${transferTarget?.sujet || ''}`}</h3>
               <button className="btn-secondary" onClick={() => setShowTransferModal(false)}>{t('fermer')}</button>
@@ -495,10 +799,7 @@ function MesEntites() {
                 </div>
               )}
               <div className="form-field full-width">
-                <label className="checkbox-field">
-                  <input type="checkbox" checked={transferDoitRevenir} onChange={e => setTransferDoitRevenir(e.target.checked)} />
-                  {t('doit_revenir')}
-                </label>
+                <label className="checkbox-field"><input type="checkbox" checked={transferDoitRevenir} onChange={e => setTransferDoitRevenir(e.target.checked)} /> {t('doit_revenir')}</label>
               </div>
               <div className="form-field full-width">
                 <label>{t('message')}</label>
@@ -512,55 +813,48 @@ function MesEntites() {
               <button className="btn-secondary" onClick={() => setShowTransferModal(false)}>{t('annuler')}</button>
             </div>
           </div>
-        </>
+        </div>
       )}
 
-      {/* Single Transfer Modal (Judicial) */}
-      {showSingleTransferModal && (
-        <>
-          <div className="modal-overlay" onClick={() => setShowSingleTransferModal(false)} />
-          <div className="modal" style={{ maxWidth: '500px' }}>
+      {/* Hidden Documents Modal */}
+      {showHiddenModal && (
+        <div className="modal-overlay" onClick={() => setShowHiddenModal(false)}>
+          <div className="modal" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
             <div className="registry-panel-header">
-              <h3>{t('transferer')} : {singleTransferTarget?.sujet || ''}</h3>
-              <button className="btn-secondary" onClick={() => setShowSingleTransferModal(false)}>{t('fermer')}</button>
+              <h3>{t('documents_masques') || 'الوثائق المخفية'}</h3>
+              <button className="btn-secondary" onClick={() => setShowHiddenModal(false)}>{t('fermer')}</button>
             </div>
-            <div className="form-grid">
-              <div className="form-field">
-                <label>{t('service_destinataire')} *</label>
-                <select value={singleTransferServiceId} onChange={e => handleSingleServiceChange(e.target.value)}>
-                  <option value="">--</option>
-                  {services.filter(s => s.idService !== serviceId).map(s => <option key={s.idService} value={s.idService}>{s.nomService}</option>)}
-                </select>
+            {hiddenIds.length === 0 ? <p className="text-muted">{t('aucun_document_masque')}</p> : (
+              <div className="data-table-wrapper">
+                <table className="modern-table">
+                  <thead><tr><th>{t('titre')}</th><th>{t('type')}</th><th>{t('actions')}</th></tr></thead>
+                  <tbody>
+                    {hiddenIds.map(key => {
+                      const doc = allDocuments.find(d => `${d.idEntite}_${d.type || d.Type}` === key);
+                      if (!doc) return null;
+                      return (
+                        <tr key={key}>
+                          <td>{doc.sujet || '-'}</td>
+                          <td>{doc.type || '-'}</td>
+                          <td className="action-icons"><button onClick={() => handleRestore(key)}>{t('restaurer') || 'استعادة'}</button></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              <div className="form-field">
-                <label>{t('personne')} *</label>
-                <select value={singleTransferUserId} onChange={e => setSingleTransferUserId(e.target.value)}>
-                  <option value="">--</option>
-                  {singleTransferUsers.map(u => <option key={u.id} value={u.id}>{u.nomComplet}</option>)}
-                </select>
-              </div>
-              <div className="form-field full-width">
-                <label className="checkbox-field">
-                  <input type="checkbox" checked={singleTransferDoitRevenir} onChange={e => setSingleTransferDoitRevenir(e.target.checked)} />
-                  {t('doit_revenir')}
-                </label>
-              </div>
-              <div className="form-field full-width">
-                <label>{t('message')}</label>
-                <textarea value={singleTransferMessage} onChange={e => setSingleTransferMessage(e.target.value)} rows="3" />
-              </div>
-            </div>
-            <div className="form-actions">
-              <button className="btn-primary" onClick={handleSingleTransfer}>{t('envoyer')}</button>
-              <button className="btn-secondary" onClick={() => setShowSingleTransferModal(false)}>{t('annuler')}</button>
-            </div>
+            )}
           </div>
-        </>
+        </div>
       )}
 
       {isModalOpen && modalDocument && <DocumentModal document={modalDocument} onClose={closeModal} />}
     </div>
   );
 }
+
+function getDocumentName(v) { if (!v) return ''; const clean = String(v).split('?')[0].split('#')[0]; return decodeURIComponent(clean.split('/').filter(Boolean).pop() || clean); }
+function getDocumentHref(v) { if (!v) return ''; if (/^https?:\/\//i.test(v)) return v; const nv = v.startsWith('/') ? v : `/${v}`; return window.location.hostname === 'localhost' && window.location.port === '3000' ? `http://localhost:5127${nv}` : nv; }
+function getErrorMessage(err, fb) { if (typeof err?.response?.data === 'string') return err.response.data; if (err?.response?.data?.message) return err.response.data.message; if (err?.message) return err.message; return fb; }
 
 export default MesEntites;

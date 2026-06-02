@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GestionCourrier.Controllers
 {
-    [Authorize(Roles = "Admin")]
+    [Authorize] // Any authenticated user can read (no role restriction)
     [Route("api/[controller]")]
     [ApiController]
     public class ListItemsController : ControllerBase
@@ -13,7 +13,7 @@ namespace GestionCourrier.Controllers
         private readonly ApplicationDbContext _context;
         public ListItemsController(ApplicationDbContext context) => _context = context;
 
-        // GET: api/ListItems?listName=EquipmentType
+        // GET: api/ListItems?listName=EquipmentType (anyone)
         [HttpGet]
         public async Task<IActionResult> GetByListName([FromQuery] string listName)
         {
@@ -25,7 +25,7 @@ namespace GestionCourrier.Controllers
             return Ok(items);
         }
 
-        // GET: api/ListItems/all (get all list names with their items)
+        // GET: api/ListItems/all (anyone)
         [HttpGet("all")]
         public async Task<IActionResult> GetAllLists()
         {
@@ -38,7 +38,8 @@ namespace GestionCourrier.Controllers
             return Ok(grouped);
         }
 
-        // POST: api/ListItems
+        // POST, PUT, DELETE require Admin
+        [Authorize(Roles = "Admin")]
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] ListItem item)
         {
@@ -49,7 +50,7 @@ namespace GestionCourrier.Controllers
             return Ok(item);
         }
 
-        // PUT: api/ListItems/{id}
+        [Authorize(Roles = "Admin")]
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(int id, [FromBody] ListItem updated)
         {
@@ -63,7 +64,7 @@ namespace GestionCourrier.Controllers
             return Ok(item);
         }
 
-        // DELETE: api/ListItems/{id}
+        [Authorize(Roles = "Admin")]
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {

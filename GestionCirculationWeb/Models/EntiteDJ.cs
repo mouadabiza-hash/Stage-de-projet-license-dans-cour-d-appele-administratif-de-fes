@@ -36,6 +36,7 @@ namespace GestionCourrier.Models
         public EntiteDJ? ParentJudiciaire { get; set; }
         public ICollection<EntiteDJ> DocumentsLies { get; set; } = new List<EntiteDJ>();
 
+        public string? LinkedDocumentSource { get; set; }
         public Service? Service { get; set; }
         public NumeroDossierJuridique? NumeroDossier { get; set; }
         public ICollection<Retrait> Retraits { get; set; } = new List<Retrait>();

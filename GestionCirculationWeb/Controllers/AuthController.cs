@@ -28,6 +28,7 @@ namespace GestionCourrier.Controllers
             var user = await _context.Utilisateurs
                 .Include(u => u.Service)
                 .Include(u => u.SubstituteUser)
+                    .ThenInclude(su => su.Service)   // ← Fixed: load substitute's service
                 .FirstOrDefaultAsync(u => u.Login == dto.Login);
 
             if (user == null)
@@ -40,7 +41,6 @@ namespace GestionCourrier.Controllers
             if (string.IsNullOrEmpty(token))
                 return StatusCode(500, new { message = "Erreur lors de la génération du token" });
 
-            // Fetch the substitute user's service name
             string? substituteServiceName = null;
             if (user.SubstituteUser != null)
                 substituteServiceName = user.SubstituteUser.Service?.NomService;
