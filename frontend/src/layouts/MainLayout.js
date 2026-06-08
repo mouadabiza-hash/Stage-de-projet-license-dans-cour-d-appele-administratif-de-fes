@@ -20,9 +20,9 @@ function MainLayout({ children }) {
 
   // Structure du menu avec les rôles (comme à l’origine)
   const menu = [
-    { label: 'dashboard', icon: 'grid', path: '/dashboard', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'] },
+    { label: 'dashboard', icon: 'logout', path: '/dashboard', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'] },
     {
-      label: 'gestion', icon: 'folder', roles: ['Admin', 'Greffier'],
+      label: 'gestion', icon: 'logout', roles: ['Admin', 'Greffier'],
       children: [
         { label: 'menu_courriers', path: '/courriers', roles: ['Admin', 'Greffier'] },
         { label: 'mes_entites', path: '/mes-entites', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'] },
@@ -34,14 +34,14 @@ function MainLayout({ children }) {
       ]
     },
     {
-      label: 'transactions', icon: 'building', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'],
+      label: 'transactions', icon: 'logout', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'],
       children: [
         { label: 'registre_transactions', path: '/transactions-outgoing', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'] },
         { label: 'notifications', path: '/notifications', roles: ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures'] },
       ]
     },
     {
-      label: 'administration', icon: 'users', roles: ['Admin', 'Directeur'],
+      label: 'administration', icon: 'settings', roles: ['Admin', 'Directeur'],
       children: [
         { label: 'equipements', path: '/equipements', roles: ['Admin', 'Directeur', 'Greffier'] },
         { label: 'services', path: '/services', roles: ['Admin', 'Directeur'] },

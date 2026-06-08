@@ -273,18 +273,39 @@ function MesEntites() {
 
   const submitForm = async () => {
     setFormError('');
-    
+
     if (editOnlyNumeroDossier && editingDoc) {
       if (!formData.numeroDossier) {
         setFormError(t('numero_dossier_obligatoire') || 'رقم الاستئنافي مطلوب');
         return;
       }
-      const payload = { numeroDossier: formData.numeroDossier };
+      // Construire l'objet complet du document à partir des données existantes + nouveau numéro
+      const fullPayload = {
+        idBureauOrdre: editingDoc.idBureauOrdre || null,
+        date: editingDoc.dateArchivage || editingDoc.date || new Date().toISOString(),
+        tribunalSource: editingDoc.tribunalSource || editingDoc.source || '',
+        sujet: editingDoc.sujet || '',
+        description: editingDoc.description || '',
+        etatArchive: editingDoc.etatArchive || editingDoc.etat || 'Nouveau',
+        lienPdf: editingDoc.lienPdf || '',
+        idService: editingDoc.idService,
+        estTransmissible: editingDoc.estTransmissible !== undefined ? editingDoc.estTransmissible : true,
+        numeroPremiereInstance: editingDoc.numeroPremiereInstance || null,
+        estDocumentLie: editingDoc.estDocumentLie || false,
+        parentJudiciaireId: editingDoc.parentJudiciaireId || null,
+        destinataire: editingDoc.destinataire || 'محكمة الاستئناف',
+        numeroDossier: formData.numeroDossier,  // ← nouvelle valeur
+        typeJudiciaire: editingDoc.typeJudiciaire || null,
+        linkedDocumentType: editingDoc.linkedDocumentType || null,
+        linkedDocumentSource: editingDoc.linkedDocumentSource || null,
+      };
       try {
-        await axios.put(`/api/acteursjudiciaires/${editingDoc.idEntite}`, payload);
+        await axios.put(`/api/acteursjudiciaires/${editingDoc.idEntite}`, fullPayload);
         setFormSuccess(t('modification_succes'));
         setTimeout(() => { setShowFormModal(false); fetchDocuments(); }, 1500);
-      } catch (err) { setFormError(getErrorMessage(err, t('erreur_enregistrement'))); }
+      } catch (err) {
+        setFormError(getErrorMessage(err, t('erreur_enregistrement')));
+      }
       return;
     }
     

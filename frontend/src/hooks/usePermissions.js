@@ -23,28 +23,28 @@ const PERMISSIONS = {
     canSeeAdministrateur: true
   },
   Enregistrement: {
-    canCreate: true, canDelete: false, canArchive: false, canTransfer: false, canExport: false,
+    canCreate: true, canDelete: false, canArchive: false, canTransfer: true, canExport: false,
     canManageUsers: false, canManageServices: false, canManageEquipments: false,
     canViewUsers: false, canViewServices: false, canViewEquipments: true,
     canCreateAdministratif: false, canCreateJuridique: true, canCreateLinked: true,
     canSeeAdministrateur: false
   },
   Archive: {
-    canCreate: false, canDelete: false, canArchive: true, canTransfer: false, canExport: false,
+    canCreate: false, canDelete: false, canArchive: true, canTransfer: true, canExport: false,
     canManageUsers: false, canManageServices: false, canManageEquipments: false,
     canViewUsers: false, canViewServices: false, canViewEquipments: true,
     canCreateAdministratif: false, canCreateJuridique: false, canCreateLinked: false,
     canSeeAdministrateur: false
   },
   Employe: {
-    canCreate: false, canDelete: false, canArchive: false, canTransfer: false, canExport: false,
+    canCreate: false, canDelete: false, canArchive: false, canTransfer: true, canExport: false,
     canManageUsers: false, canManageServices: false, canManageEquipments: false,
     canViewUsers: false, canViewServices: false, canViewEquipments: true,
     canCreateAdministratif: false, canCreateJuridique: false, canCreateLinked: false,
     canSeeAdministrateur: false
   },
   Procedures: {
-    canCreate: false, canDelete: false, canArchive: false, canTransfer: false, canExport: false,
+    canCreate: false, canDelete: false, canArchive: false, canTransfer: true, canExport: false,
     canManageUsers: false, canManageServices: false, canManageEquipments: false,
     canViewUsers: false, canViewServices: false, canViewEquipments: false,
     canCreateAdministratif: false, canCreateJuridique: false, canCreateLinked: true,

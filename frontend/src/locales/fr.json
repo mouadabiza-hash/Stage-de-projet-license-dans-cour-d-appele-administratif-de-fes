@@ -501,7 +501,19 @@
 "document_retourne": "Document retourné",
 "transaction_acceptee": "Transaction acceptée",
 "transaction_refusee": "Transaction refusée",
-"gestion": "Gestion"
+"gestion": "Gestion",
+"restaurer_masquees": "Restaurer les masquées",
+"transactions_masquees": "Transactions masquées",
+"aucune_masquee": "Aucune transaction masquée",
+"restaurer": "Restaurer",
+"restaurer_tout": "Restaurer tout",
+"masquee": "Masquée",
+"confirmation_masquer_transaction": "Masquer cette transaction ? Elle ne sera plus visible dans votre tableau de bord.",
+"transaction_restauree": "Transaction restaurée",
+"ajouter_numero_appel": "Ajouter un numéro d'appel",
+"وثيقة مربوطة بملف":"document lié ",
+"ملف":"dossier principal "
+
 
 
 }

@@ -378,13 +378,16 @@ html[dir="rtl"] .sidebar-nav a.active {
 .nav-icon-logout::before,
 .nav-icon-search::before,
 .nav-icon-swap::before {
-  font-size: 0.78rem;
+  font-size: 0.70rem;
   font-weight: 900;
   line-height: 1;
 }
 
 .nav-icon-mail::before { content: "@"; }
 .nav-icon-folder::before { content: "F"; }
+.nav-icon-transaction::before { content: "T"; }
+.nav-icon-gestion::before { content: "G"; }
+.nav-icon-dashboard::before { content: "D"; }
 .nav-icon-archive::before { content: "A"; }
 .nav-icon-eye::before { content: "O"; }
 .nav-icon-users::before { content: "U"; }

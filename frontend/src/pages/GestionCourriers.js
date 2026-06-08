@@ -984,11 +984,11 @@ const fetchData = useCallback(async () => {
               <div className="registry-choice sub-choice" style={{ marginBottom: '1.5rem' }}>
                 {!isProcedures && perms.canCreateJuridique && (
                   <button type="button" className={`choice-pill ${judMode === 'file' ? 'active' : ''}`}
-                    onClick={() => { setJudMode('file'); setForm(emptyForm(TYPE_JUDICIAIRE)); }}>ملف</button>
+                    onClick={() => { setJudMode('file'); setForm(emptyForm(TYPE_JUDICIAIRE)); }}>{t('ملف')}</button>
                 )}
                 {perms.canCreateLinked && (
                   <button type="button" className={`choice-pill ${judMode === 'linked' ? 'active' : ''}`}
-                    onClick={() => { setJudMode('linked'); setForm(emptyForm(TYPE_JUDICIAIRE)); fetchParentFiles(); }}>وثيقة مربوطة بملف</button>
+                    onClick={() => { setJudMode('linked'); setForm(emptyForm(TYPE_JUDICIAIRE)); fetchParentFiles(); }}>{t('وثيقة مربوطة بملف')}</button>
                 )}
               </div>
             )}

@@ -19,14 +19,16 @@ function DocumentModal({ document, onClose }) {
 
   const getValue = (field) => {
     switch (field) {
-      case 'date': return document.date || document.dateCreation || document.dateArchivage;
-      case 'etat': return document.etat || document.etatArchive;
-      case 'source': return document.source || document.tribunalSource;
-      case 'numeroDossier': return document.numeroDossier ||
+      case 'date': return document.date || document.dateCreation || document.dateArchivage || document.dateEnvoi || document.dateArrivee;
+      case 'etat': return document.etat || document.etatArchive || document.statut;
+      case 'source': return document.source || document.tribunalSource || document.sourceServiceNom;
+      case 'numeroDossier': return document.numeroDossier || document.numeroDossierJudiciaire ||
         (document.numeroDossierAnnee
           ? `${document.numeroDossierAnnee}/${document.numeroDossierNombre}/${document.numeroDossierSujet}`
           : null);
-      case 'service': return document.serviceNom || document.Service?.nomService;
+      case 'service': return document.serviceNom || document.Service?.nomService || document.destinationServiceNom;
+      case 'destinataire': return document.destinataire || document.destinationServiceNom;
+      case 'typeDocument': return document.typeDocument || document.type;
       default: return document[field];
     }
   };
@@ -42,9 +44,11 @@ function DocumentModal({ document, onClose }) {
   const fields = [
     { key: 'id', label: 'ID' },
     { key: 'idBureauOrdre', label: t('numero_bureau_ordre') },
-    { key: 'numeroDossier', label: t('numero_dossier') },
-     { key: 'numeroPremiereInstance', label: t('numero_premiere_instance') },
+    { key: 'numeroDossier', label: t('numero_dossier_judiciaire') },
+    { key: 'numeroPremiereInstance', label: t('numero_premiere_instance') },
     { key: 'numeroDeCourrier', label: t('numero_courrier') },
+    { key: 'numeroCourrier', label: t('numero_courrier_transaction') },
+    { key: 'typeDocument', label: t('type_document') },
     { key: 'date', label: t('date') },
     { key: 'sujet', label: t('objet') },
     { key: 'source', label: t('source') },
@@ -54,9 +58,9 @@ function DocumentModal({ document, onClose }) {
     { key: 'direction', label: t('direction') },
     { key: 'typeRegistre', label: t('type_registre') },
     { key: 'typeCorrespondance', label: t('type_correspondance') },
-    { key: 'typeDocument', label: t('type_document') },
     { key: 'emplacement', label: t('emplacement') },
     { key: 'estTransmissible', label: t('transmissible') },
+    { key: 'message', label: t('message') },
     { key: 'description', label: t('description') },
   ];
 
@@ -73,11 +77,17 @@ function DocumentModal({ document, onClose }) {
     return `${backendUrl}${normalized}`;
   };
 
+  const isTransaction = document.hasOwnProperty('documentId') || document.hasOwnProperty('statut');
+  const docTitle = document.sujet || document.documentSujet || 'Document';
+
   return (
     <div className="modal-overlay" onClick={handleOverlayClick}>
       <div className="modal modal-document" onClick={(e) => e.stopPropagation()}>
         <div className="registry-panel-header">
-          <h2>{t('details_document')}</h2>
+          <div>
+            <h2>{t('details_document')}</h2>
+            <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.95rem', color: '#666' }}>{docTitle}</p>
+          </div>
           <button className="btn-secondary" onClick={onClose}>{t('fermer')}</button>
         </div>
 
@@ -91,14 +101,53 @@ function DocumentModal({ document, onClose }) {
                 return (
                   <div className="form-field" key={field.key}>
                     <label>{field.label}:</label>
-                    <span>{rendered}</span>
+                    <span style={{ fontWeight: '500', color: '#333' }}>{rendered}</span>
                   </div>
                 );
               })}
             </div>
+
+            {isTransaction && document.destinationUserName && (
+              <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#f0f7ff', borderRadius: '8px', border: '1px solid #d0e8ff' }}>
+                <h3 style={{ marginTop: 0, color: '#0c4a6e' }}>{t('transaction_details') || 'تفاصيل العملية'}</h3>
+                <div className="form-grid">
+                  {document.destinationServiceName && (
+                    <div className="form-field">
+                      <label>{t('service_destinataire')}:</label>
+                      <span style={{ fontWeight: '500' }}>{document.destinationServiceName}</span>
+                    </div>
+                  )}
+                  {document.destinationUserName && (
+                    <div className="form-field">
+                      <label>{t('personne')}:</label>
+                      <span style={{ fontWeight: '500' }}>{document.destinationUserName}</span>
+                    </div>
+                  )}
+                  {document.dateEnvoi && (
+                    <div className="form-field">
+                      <label>{t('date_envoi')}:</label>
+                      <span style={{ fontWeight: '500' }}>{formatDate(document.dateEnvoi)}</span>
+                    </div>
+                  )}
+                  {document.statut && (
+                    <div className="form-field">
+                      <label>{t('statut')}:</label>
+                      <span style={{ fontWeight: '500', padding: '0.3rem 0.6rem', background: '#fff', borderRadius: '4px', border: '1px solid #ddd' }}>{document.statut}</span>
+                    </div>
+                  )}
+                  {document.messageReponse && (
+                    <div className="form-field full-width">
+                      <label>{t('reponse')}:</label>
+                      <span style={{ whiteSpace: 'pre-wrap' }}>{document.messageReponse}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {retraits && retraits.length > 0 && (
               <>
-                <h3 style={{ marginTop: '1rem' }}>{t('historique_retraits')}</h3>
+                <h3 style={{ marginTop: '1.5rem' }}>{t('historique_retraits')}</h3>
                 <div className="data-table-wrapper">
                   <table className="modern-table">
                     <thead>
@@ -118,10 +167,10 @@ function DocumentModal({ document, onClose }) {
                           <td>{r.effectuePar || '-'}</td>
                           <td>{r.dateDeRetour ? formatDate(r.dateDeRetour) : '-'}</td>
                           <td>{r.notes || '-'}</td>
-                        </tr>
+                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                   </table>
                 </div>
               </>
             )}
@@ -148,6 +197,11 @@ function DocumentModal({ document, onClose }) {
                   </a>
                 </div>
               </>
+            )}
+            {!pdfUrl && (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#999' }}>
+                <p>{t('aucun_document_attache') || 'لا توجد وثيقة مرفقة'}</p>
+              </div>
             )}
           </div>
         </div>

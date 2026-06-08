@@ -513,7 +513,16 @@
 "toutes_mes_transactions": "جميع معاملاتي",
 "gestion":"التدبير",
 "transactions":"المعاملات",
-"profil":"الملف الشخصي"
+"profil":"الملف الشخصي",
+"restaurer_masquees": "استعادة المخفية",
+"transactions_masquees": "المعاملات المخفية",
+"aucune_masquee": "لا توجد معاملات مخفية",
+"restaurer": "استعادة",
+"restaurer_tout": "استعادة الكل",
+"masquee": "مخفية",
+"confirmation_masquer_transaction": "هل تريد إخفاء هذه المعاملة؟ لن تظهر بعد الآن في لوحة القيادة.",
+"transaction_restauree": "تم استعادة المعاملة",
+"ajouter_numero_appel": "إضافة رقم الاستنافي"
 }
 
 
