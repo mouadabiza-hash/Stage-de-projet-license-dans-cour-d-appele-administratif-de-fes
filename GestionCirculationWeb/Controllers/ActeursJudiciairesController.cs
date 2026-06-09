@@ -171,6 +171,24 @@ public async Task<IActionResult> GetRetraitsByDocument(int id)
             return Ok(ToResponse(item));
         }
 
+        [HttpPut("{id}/traite")]
+        public async Task<IActionResult> MarquerTraite(int id)
+        {
+            var item = await _context.EntitesDJs.FindAsync(id);
+            if (item == null) return NotFound();
+
+            // Optionnel : vérifier que l'état actuel permet le passage à "Traité"
+            if (item.EtatArchive != "En cours" && item.EtatArchive != "Nouveau")
+            {
+                return BadRequest("Seul un dossier 'En cours' ou 'Nouveau' peut être marqué comme traité.");
+            }
+
+            item.EtatArchive = "Traité";
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Dossier marqué comme traité" });
+        }
+
         // ========== RETRAITS ==========
         [HttpPost("{id:int}/retraits")]
         public async Task<IActionResult> EnregistrerRetrait(int id, RetraitRequest request)
@@ -378,6 +396,7 @@ public async Task<IActionResult> ImportArchiveExecute(
                     errors.Add($"Ligne {lineNumber}: format de date invalide '{raw}'.");
             }
         }
+
         // ─────────────────────────────────────────────────────────────────────
 
         if (string.IsNullOrWhiteSpace(identifiant))
@@ -574,23 +593,30 @@ public IActionResult GetTemplateExcel()
 private async Task<IActionResult?> ValidateRequest(CourrierJudiciaireRequest request, int? excludeId)
 {
     if (request.Date == default) return BadRequest("Date obligatoire.");
-    if (string.IsNullOrWhiteSpace(request.TribunalSource) && !request.EstDocumentLie) return BadRequest("Tribunal / source obligatoire.");
+    if (string.IsNullOrWhiteSpace(request.TribunalSource) && !request.EstDocumentLie)
+        return BadRequest("Tribunal / source obligatoire.");
     if (string.IsNullOrWhiteSpace(request.Sujet)) return BadRequest("Sujet obligatoire.");
 
-    // Uniqueness validations (existing code)...
+    // Unicité de IdBureauOrdre (global, comme avant)
     if (!string.IsNullOrWhiteSpace(request.IdBureauOrdre))
     {
         var normalizedId = request.IdBureauOrdre.Trim();
-        bool existsInAdmin = await _context.Entites.AnyAsync(e => e.IdBureauOrdre != null && e.IdBureauOrdre.Trim() == normalizedId && (!excludeId.HasValue || e.IdEntite != excludeId.Value));
-        bool existsInJudicial = await _context.EntitesDJs.AnyAsync(e => e.IdBureauOrdre != null && e.IdBureauOrdre.Trim() == normalizedId && (!excludeId.HasValue || e.Id != excludeId.Value));
+        bool existsInAdmin = await _context.Entites.AnyAsync(e =>
+            e.IdBureauOrdre != null && e.IdBureauOrdre.Trim() == normalizedId &&
+            (!excludeId.HasValue || e.IdEntite != excludeId.Value));
+        bool existsInJudicial = await _context.EntitesDJs.AnyAsync(e =>
+            e.IdBureauOrdre != null && e.IdBureauOrdre.Trim() == normalizedId &&
+            (!excludeId.HasValue || e.Id != excludeId.Value));
         if (existsInAdmin || existsInJudicial)
             return BadRequest("رقم مكتب الضبط مستخدم بالفعل. يجب أن يكون فريداً.");
     }
 
+    // Unicité du numéro de dossier judiciaire (الرقم الاستئنافي)
     if (TryParseNumeroDossierFlexible(request.NumeroDossier, out int annee, out int nombre, out int sujet))
     {
         bool exists = await _context.EntitesDJs.AnyAsync(e =>
-            e.NumeroDossier != null && e.NumeroDossier.Annee == annee && e.NumeroDossier.Nombre == nombre && e.NumeroDossier.NumeroSujet == sujet &&
+            e.NumeroDossier != null && e.NumeroDossier.Annee == annee &&
+            e.NumeroDossier.Nombre == nombre && e.NumeroDossier.NumeroSujet == sujet &&
             (!excludeId.HasValue || e.Id != excludeId.Value));
         if (exists)
             return BadRequest("رقم الاستئنافي للملف مستخدم بالفعل. يجب أن يكون فريداً.");
@@ -600,19 +626,38 @@ private async Task<IActionResult?> ValidateRequest(CourrierJudiciaireRequest req
         return BadRequest("تنسيق رقم الاستئنافي غير صحيح. يجب أن يكون بالصيغة: السنة/العدد/الرقم (مثال: 2026/15/3)");
     }
 
+    // --- MODIFICATION ICI : Unicité du رقم الابتدائي par tribunalSource ---
     if (!string.IsNullOrWhiteSpace(request.NumeroPremiereInstance))
     {
-        bool exists = await _context.EntitesDJs.AnyAsync(e => e.NumeroPremiereInstance != null && e.NumeroPremiereInstance.Trim() == request.NumeroPremiereInstance.Trim() && (!excludeId.HasValue || e.Id != excludeId.Value));
+        // Si le dossier n'est pas un document lié, on exige le TribunalSource
+        if (!request.EstDocumentLie && string.IsNullOrWhiteSpace(request.TribunalSource))
+        {
+            return BadRequest("المصدر (TribunalSource) obligatoire pour vérifier l'unicité du رقم الابتدائي.");
+        }
+
+        var normalizedNumero = request.NumeroPremiereInstance.Trim();
+        var normalizedSource = request.TribunalSource?.Trim() ?? "";
+
+        // Pour les documents liés, on peut choisir de ne pas vérifier l'unicité (ou utiliser le parent)
+        // Ici on fait comme les autres : on vérifie avec la source du document lui-même
+        bool exists = await _context.EntitesDJs.AnyAsync(e =>
+            e.NumeroPremiereInstance != null && e.NumeroPremiereInstance.Trim() == normalizedNumero &&
+            e.TribunalSource != null && e.TribunalSource.Trim() == normalizedSource &&
+            (!excludeId.HasValue || e.Id != excludeId.Value));
+
         if (exists)
-            return BadRequest("الرقم الابتدائي مستخدم بالفعل. يجب أن يكون فريداً.");
+            return BadRequest("الرقم الابتدائي مستخدم بالفعل لهذا المصدر. يجب أن يكون فريداً لكل محكمة/مصدر.");
     }
 
+    // Vérification service
     if (request.IdService <= 0) return BadRequest("Service obligatoire.");
-    if (!await _context.Services.AnyAsync(s => s.IdService == request.IdService)) return BadRequest("Service inexistant.");
+    if (!await _context.Services.AnyAsync(s => s.IdService == request.IdService))
+        return BadRequest("Service inexistant.");
+
+    // Vérification document lié
     if (request.EstDocumentLie && (!request.ParentJudiciaireId.HasValue || request.ParentJudiciaireId.Value <= 0))
         return BadRequest("Veuillez choisir un dossier parent pour la وثيقة مربوطة.");
 
-    // ✅ NEW VALIDATION: ensure parent exists and is not itself a linked document
     if (request.EstDocumentLie && request.ParentJudiciaireId.HasValue)
     {
         var parent = await _context.EntitesDJs.FindAsync(request.ParentJudiciaireId.Value);

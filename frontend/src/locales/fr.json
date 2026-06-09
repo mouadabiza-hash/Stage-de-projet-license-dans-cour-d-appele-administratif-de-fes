@@ -512,7 +512,30 @@
 "transaction_restauree": "Transaction restaurée",
 "ajouter_numero_appel": "Ajouter un numéro d'appel",
 "وثيقة مربوطة بملف":"document lié ",
-"ملف":"dossier principal "
+"ملف":"dossier principal ",
+"type_dossier": "Type dossier",
+"courrier_entrant": "Courrier entrant",
+"courrier_sortant": "Courrier sortant",
+"interne": "Interne",
+"idBureauOrdre": "N° Bureau d'ordre",
+"numeroDossier": "N° dossier",
+"numeroPremiereInstance": "N° première instance",
+"numeroDeCourrier": "N° courrier",
+"sujet": "Objet",
+"tribunalSource": "Tribunal source",
+"serviceNom": "Service",
+"typeRegistre": "Type registre",
+"typeCorrespondance": "Type correspondance",
+"typeDocument": "Type document",
+"typeJudiciaire": "Type judiciaire",
+"linkedDocumentSource": "Source document lié",
+"linkedDocumentType": "Type document lié",
+"estTransmissible": "Transmissible",
+"dateArchivage": "Date d'archivage",
+"etatArchive": "État ",
+"motifDeRetrait": "Motif retrait",
+"effectuePar": "Effectué par",
+"dateDeRetour": "Date de retour"
 
 
 

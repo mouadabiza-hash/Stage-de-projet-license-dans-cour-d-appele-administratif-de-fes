@@ -106,39 +106,85 @@ namespace GestionCourrier.Controllers
             return Ok();
         }
 
-        [HttpGet("export/excel")]
-        public async Task<IActionResult> ExportExcel()
-        {
-            var equipements = await _context.Equipements.Include(e => e.Service).ToListAsync();
-            using var workbook = new XLWorkbook();
-            var ws = workbook.Worksheets.Add("Equipements");
-            ws.Cell(1, 1).Value = "ID";
-            ws.Cell(1, 2).Value = "Série";
-            ws.Cell(1, 3).Value = "Type";
-            ws.Cell(1, 4).Value = "État";
-            ws.Cell(1, 5).Value = "Service ID";
-            ws.Cell(1, 6).Value = "Service";
-            ws.Cell(1, 7).Value = "Chargé";
-            ws.Cell(1, 8).Value = "Date de décharge";
-            int row = 2;
-            foreach (var e in equipements)
-            {
-                ws.Cell(row, 1).Value = e.Id;
-                ws.Cell(row, 2).Value = e.Serial;
-                ws.Cell(row, 3).Value = e.Type;
-                ws.Cell(row, 4).Value = e.Etat;
-                ws.Cell(row, 5).Value = e.IdService;
-                ws.Cell(row, 6).Value = e.Service?.NomService;
-                ws.Cell(row, 7).Value = e.EstCharge ? "Oui" : "Non";
-                ws.Cell(row, 8).Value = e.DateDechargement?.ToString("yyyy-MM-dd HH:mm");
-                row++;
-            }
-            ws.Columns().AdjustToContents();
-            using var stream = new MemoryStream();
-            workbook.SaveAs(stream);
-            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "equipements.xlsx");
-        }
+ [HttpGet("export/excel")]
+public async Task<IActionResult> ExportExcel()
+{
+    var equipements = await _context.Equipements.Include(e => e.Service).ToListAsync();
 
+    // Load list items for type and etat
+    var typeItems = await _context.ListItems.Where(l => l.ListName == "EquipmentType").ToListAsync();
+    var etatItems = await _context.ListItems.Where(l => l.ListName == "EquipmentEtat").ToListAsync();
+
+    // Determine language from Accept-Language header
+    var lang = Request.Headers["Accept-Language"].ToString().StartsWith("ar") ? "ar" : "fr";
+
+    string GetTypeLabel(int code)
+    {
+        var item = typeItems.FirstOrDefault(t => t.Code == code.ToString());
+        if (item == null) return code.ToString();
+        return lang == "ar" ? item.ValueAr : item.ValueFr;
+    }
+
+    string GetEtatLabel(int code)
+    {
+        var item = etatItems.FirstOrDefault(e => e.Code == code.ToString());
+        if (item == null) return code.ToString();
+        return lang == "ar" ? item.ValueAr : item.ValueFr;
+    }
+
+    using var workbook = new XLWorkbook();
+    var ws = workbook.Worksheets.Add("المعدات");
+    ws.RightToLeft = true;
+
+    // Headers (Arabic) – removed ID and Service ID
+    var headers = new[] 
+    { 
+        "الرقم المسلسل",   // Série
+        "النوع",           // Type
+        "الحالة",          // État
+        "الخدمة",          // Service
+        "مشحون",           // Chargé
+        "تاريخ التفريغ"     // Date de décharge
+    };
+
+    // Style header row
+    for (int i = 0; i < headers.Length; i++)
+    {
+        var cell = ws.Cell(1, i + 1);
+        cell.Value = headers[i];
+        cell.Style.Font.Bold = true;
+        cell.Style.Font.FontColor = XLColor.White;
+        cell.Style.Fill.BackgroundColor = XLColor.FromArgb(68, 68, 68);
+        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        cell.Style.Border.OutsideBorderColor = XLColor.Black;
+    }
+    ws.Row(1).Height = 30;
+
+    int row = 2;
+    foreach (var e in equipements)
+    {
+        ws.Cell(row, 1).Value = e.Serial;
+        ws.Cell(row, 2).Value = GetTypeLabel(e.Type);
+        ws.Cell(row, 3).Value = GetEtatLabel(e.Etat);
+        ws.Cell(row, 4).Value = e.Service?.NomService ?? "";
+        ws.Cell(row, 5).Value = e.EstCharge ? "نعم" : "لا";
+        ws.Cell(row, 6).Value = e.DateDechargement?.ToString("yyyy-MM-dd HH:mm") ?? "";
+
+        // Alternate row shading
+        if (row % 2 == 0)
+        {
+            var rowRange = ws.Range(row, 1, row, headers.Length);
+            rowRange.Style.Fill.BackgroundColor = XLColor.FromArgb(240, 240, 240);
+        }
+        row++;
+    }
+    ws.Columns().AdjustToContents();
+    using var stream = new MemoryStream();
+    workbook.SaveAs(stream);
+    return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "equipements.xlsx");
+}
         [HttpPost("import/preview")]
         public async Task<IActionResult> ImportPreview(IFormFile file)
         {

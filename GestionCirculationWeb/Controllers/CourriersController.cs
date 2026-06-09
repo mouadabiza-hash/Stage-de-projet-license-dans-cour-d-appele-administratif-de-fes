@@ -291,7 +291,7 @@ public async Task<IActionResult> ExportExcel(string? motCle, string? numeroBurea
             e.Destinataire.StartsWith(keyword) || e.Description.StartsWith(keyword) ||
             e.Etat.StartsWith(keyword));
     }
-
+    
     var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
     if (userRole == "Enregistrement" || userRole == "Procedures")
         query = query.Where(e => string.IsNullOrEmpty(e.IdBureauOrdre));
@@ -309,12 +309,28 @@ public async Task<IActionResult> ExportExcel(string? motCle, string? numeroBurea
         return parts.Length > 0 && int.TryParse(parts[0], out int num) ? num : int.MaxValue;
     }).ToList();
 
+    // Load list items for mapping
+    var sourceItems = await _context.ListItems.Where(l => l.ListName == "Source").ToListAsync();
+    var stateItems = await _context.ListItems.Where(l => l.ListName == "DocumentState").ToListAsync();
+    var directionItems = await _context.ListItems.Where(l => l.ListName == "Direction").ToListAsync();
+    var corrTypeItems = await _context.ListItems.Where(l => l.ListName == "CorrespondanceType").ToListAsync();
+
+    // Determine current language (from Accept-Language header)
+    var lang = Request.Headers["Accept-Language"].ToString().StartsWith("ar") ? "ar" : "fr";
+
+    string GetLabel(IEnumerable<ListItem> items, string code)
+    {
+        if (string.IsNullOrEmpty(code)) return "-";
+        var item = items.FirstOrDefault(i => i.Code == code);
+        if (item == null) return code;
+        return lang == "ar" ? item.ValueAr : item.ValueFr;
+    }
+
     using var workbook = new XLWorkbook();
     var ws = workbook.Worksheets.Add("Courriers");
-    
-    // Aligned to Right-To-Left view orientation
-    ws.RightToLeft = true; 
+    ws.RightToLeft = true;
 
+    // Apply your existing header structure (your ApplyHeaderStructure method)
     ApplyHeaderStructure(ws);
 
     var bodyGray = XLColor.FromArgb(242, 242, 242);
@@ -338,13 +354,13 @@ public async Task<IActionResult> ExportExcel(string? motCle, string? numeroBurea
         DateTime? letterDate = null;
         string serialNumber = "";
 
-        var reply = await _context.Entites.FirstOrDefaultAsync(e => e.ParentId == c.Id && e.TypeDocument == TypeDocumentAdministratif);
+        var reply = await _context.Entites.FirstOrDefaultAsync(e => e.ParentId == c.Id && e.TypeDocument == "Administratif");
         bool isOutgoing = (c.TypeRegistre == "Morasalat" && c.TypeCorrespondance == "Sortante") || c.Direction == "Sortant";
 
         if (isOutgoing)
         {
             subject1 = c.Sujet ?? "";
-            destinataire = c.Destinataire ?? "";
+            destinataire = GetLabel(sourceItems, c.Destinataire);
             date2 = c.DateCreation;
             serialNumber = c.IdBureauOrdre ?? "";
             if (reply != null) { sourceReply = reply.Sujet ?? ""; date1 = reply.DateCreation; }
@@ -352,27 +368,26 @@ public async Task<IActionResult> ExportExcel(string? motCle, string? numeroBurea
         else
         {
             subject2 = c.Sujet ?? "";
-            senderName = c.Source ?? "";
+            senderName = GetLabel(sourceItems, c.Source);
             arrivalDate = c.DateCreation;
             number = c.NumeroDeCourrier ?? "";
             letterDate = extractedDateMessage;
             serialNumber = c.IdBureauOrdre ?? "";
-            if (reply != null) { subject1 = reply.Sujet ?? ""; destinataire = reply.Destinataire ?? ""; date2 = reply.DateCreation; }
+            if (reply != null) { subject1 = reply.Sujet ?? ""; destinataire = GetLabel(sourceItems, reply.Destinataire); date2 = reply.DateCreation; }
         }
 
-        // Cell population logic inverted completely from Column 1 (A) to Column 12 (L)
-        ws.Cell(row, 1).Value = serialNumber;      // A: رقم الترتيبي
-        SetDate(ws.Cell(row, 2), letterDate);      // B: التاريخ الرسالة
-        ws.Cell(row, 3).Value = number;           // C: رقمها
-        SetDate(ws.Cell(row, 4), arrivalDate);     // D: تاريخ الوصول
-        ws.Cell(row, 5).Value = senderName;        // E: اسم وموطن المرسل إليه
-        ws.Cell(row, 6).Value = subject2;          // F: الموضوع
-        SetDate(ws.Cell(row, 7), date2);           // G: التاريخ
-        ws.Cell(row, 8).Value = destinataire;      // H: المرسل إليه
-        ws.Cell(row, 9).Value = subject1;          // I: الموضوع
-        SetDate(ws.Cell(row, 10), date1);          // J: التاريخ
-        ws.Cell(row, 11).Value = sourceReply;      // K: المصدر والجواب
-        ws.Cell(row, 12).Value = resultNote;       // L: النتيجة
+        ws.Cell(row, 1).Value = serialNumber;
+        SetDate(ws.Cell(row, 2), letterDate);
+        ws.Cell(row, 3).Value = number;
+        SetDate(ws.Cell(row, 4), arrivalDate);
+        ws.Cell(row, 5).Value = senderName;
+        ws.Cell(row, 6).Value = subject2;
+        SetDate(ws.Cell(row, 7), date2);
+        ws.Cell(row, 8).Value = destinataire;
+        ws.Cell(row, 9).Value = subject1;
+        SetDate(ws.Cell(row, 10), date1);
+        ws.Cell(row, 11).Value = sourceReply;
+        ws.Cell(row, 12).Value = resultNote;
 
         var rowRange = ws.Range(row, 1, row, 12);
         rowRange.Style.Fill.BackgroundColor = bodyGray;
@@ -389,9 +404,7 @@ public async Task<IActionResult> ExportExcel(string? motCle, string? numeroBurea
     }
 
     if (row > 4) ws.Range(4, 1, row - 1, 12).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
-
-    // Automatically scales columns to completely eliminate value truncations
-    ws.Columns().AdjustToContents(); 
+    ws.Columns().AdjustToContents();
 
     using var stream = new MemoryStream();
     workbook.SaveAs(stream);

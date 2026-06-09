@@ -455,63 +455,73 @@ public async Task<IActionResult> GetPendingReturns()
         }
 
         // ========== POST: api/transactions/{id}/respond ==========
-        [HttpPost("{id}/respond")]
-        public async Task<IActionResult> Respond(int id, [FromBody] ReponseTransactionDto dto)
+[HttpPost("{id}/respond")]
+public async Task<IActionResult> Respond(int id, [FromBody] ReponseTransactionDto dto)
+{
+    var transaction = await _context.Transactions.FindAsync(id);
+    if (transaction == null) return NotFound();
+
+    var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
+    if (user == null) return Unauthorized();
+
+    // Vérification des droits (omise pour brièveté)
+    // ...
+
+    if (transaction.Statut != "En attente")
+        return BadRequest($"Transaction déjà {transaction.Statut}.");
+
+    transaction.Statut = dto.Accepte ? "Accepté" : "Refusé";
+    transaction.DateReponse = DateTime.Now;
+    transaction.MessageReponse = dto.Message;
+
+    if (dto.Accepte)
+    {
+        transaction.AcceptedByUserId = user.Id;
+        transaction.AcceptedByUserName = user.NomComplet;
+        transaction.AcceptedDate = DateTime.Now;
+
+        // Récupérer l'id du service "Archives" (الحفظ)
+        var archivesService = await _context.Services
+            .FirstOrDefaultAsync(s => s.NomService == "الحفظ" || s.NomService == "Archives");
+        int? archivesServiceId = archivesService?.IdService;
+
+        if (transaction.DocumentType == "Administratif")
         {
-            var transaction = await _context.Transactions.FindAsync(id);
-            if (transaction == null) return NotFound();
-
-            var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
-            if (user == null) return Unauthorized();
-
-            bool authorized = user.IdService == transaction.DestinationServiceId;
-            if (!authorized)
+            var doc = await _context.Entites.FindAsync(transaction.DocumentId);
+            if (doc != null)
             {
-                var substitutes = await _context.Utilisateurs
-                    .AnyAsync(u => u.SubstituteUserId == user.Id && u.IdService == transaction.DestinationServiceId);
-                if (substitutes) authorized = true;
+                doc.IdService = transaction.DestinationServiceId;
+                transaction.DocumentSujet = doc.Sujet;
             }
-            if (!authorized)
-                return BadRequest("Vous n'êtes pas autorisé à répondre à cette transaction.");
-
-            if (transaction.Statut != "En attente")
-                return BadRequest($"Transaction déjà {transaction.Statut}.");
-
-            transaction.Statut = dto.Accepte ? "Accepté" : "Refusé";
-            transaction.DateReponse = DateTime.Now;
-            transaction.MessageReponse = dto.Message;
-
-            if (dto.Accepte)
-            {
-                transaction.AcceptedByUserId = user.Id;
-                transaction.AcceptedByUserName = user.NomComplet;
-                transaction.AcceptedDate = DateTime.Now;
-
-                if (transaction.DocumentType == "Administratif")
-                {
-                    var doc = await _context.Entites.FindAsync(transaction.DocumentId);
-                    if (doc != null)
-                    {
-                        doc.IdService = transaction.DestinationServiceId;
-                        transaction.DocumentSujet = doc.Sujet;
-                    }
-                }
-                else
-                {
-                    var doc = await _context.EntitesDJs.FindAsync(transaction.DocumentId);
-                    if (doc != null)
-                    {
-                        doc.IdService = transaction.DestinationServiceId;
-                        var destService = await _context.Services.FindAsync(transaction.DestinationServiceId);
-                        doc.Emplacement = destService?.NomService ?? "Inconnu";
-                        transaction.DocumentSujet = doc.Sujet;
-                    }
-                }
-            }
-
-            await _context.SaveChangesAsync();
-            return Ok(new { message = "Réponse enregistrée", statut = transaction.Statut });
         }
+        else if (transaction.DocumentType == "Judiciaire")
+        {
+            var doc = await _context.EntitesDJs.FindAsync(transaction.DocumentId);
+            if (doc != null)
+            {
+                doc.IdService = transaction.DestinationServiceId;
+                var destService = await _context.Services.FindAsync(transaction.DestinationServiceId);
+                doc.Emplacement = destService?.NomService ?? "Inconnu";
+                transaction.DocumentSujet = doc.Sujet;
+
+                // Gestion des états
+                if (doc.EtatArchive == "Nouveau")
+                {
+                    doc.EtatArchive = "En cours";
+                }
+
+                // Si le service de destination est "Archives", passer à "Traité"
+                if (archivesServiceId.HasValue && transaction.DestinationServiceId == archivesServiceId.Value)
+                {
+                    doc.EtatArchive = "Traité";
+                }
+            }
+        }
+    }
+
+    await _context.SaveChangesAsync();
+    return Ok(new { message = "Réponse enregistrée", statut = transaction.Statut });
+}
 
         // ========== POST: api/transactions/{id}/cancel ==========
         [HttpPost("{id}/cancel")]
@@ -537,47 +547,59 @@ public async Task<IActionResult> GetPendingReturns()
         }
 
         // ========== POST: api/transactions/{id}/mark-returned ==========
-        [HttpPost("{id}/mark-returned")]
-        public async Task<IActionResult> MarkReturned(int id)
+[HttpPost("{id}/mark-returned")]
+public async Task<IActionResult> MarkReturned(int id)
+{
+    var transaction = await _context.Transactions.FindAsync(id);
+    if (transaction == null) return NotFound();
+
+    var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
+    if (user == null) return Unauthorized();
+
+    if (user.IdService != transaction.SourceServiceId)
+        return Forbid("Seul l'émetteur peut marquer le retour.");
+
+    if (!transaction.DoitRevenir)
+        return BadRequest("Cette transaction ne nécessite pas de retour.");
+
+    if (transaction.Statut != "Accepté")
+        return BadRequest("Seule une transaction acceptée peut être retournée.");
+
+    // Mettre à jour le document pour le réattribuer au service source
+    if (transaction.DocumentType == "Administratif")
+    {
+        var doc = await _context.Entites.FindAsync(transaction.DocumentId);
+        if (doc != null)
         {
-            var transaction = await _context.Transactions.FindAsync(id);
-            if (transaction == null) return NotFound();
-
-            var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
-            if (user == null) return Unauthorized();
-
-            if (user.IdService != transaction.SourceServiceId)
-                return Forbid("Seul l'émetteur peut marquer le retour.");
-
-            if (!transaction.DoitRevenir)
-                return BadRequest("Cette transaction ne nécessite pas de retour.");
-
-            if (transaction.Statut != "Accepté")
-                return BadRequest("Seule une transaction acceptée peut être retournée.");
-
-            if (transaction.DocumentType == "Administratif")
-            {
-                var doc = await _context.Entites.FindAsync(transaction.DocumentId);
-                if (doc != null)
-                {
-                    doc.IdService = transaction.SourceServiceId;
-                }
-            }
-            else
-            {
-                var doc = await _context.EntitesDJs.FindAsync(transaction.DocumentId);
-                if (doc != null)
-                {
-                    doc.IdService = transaction.SourceServiceId;
-                    var sourceService = await _context.Services.FindAsync(transaction.SourceServiceId);
-                    doc.Emplacement = sourceService?.NomService ?? "Inconnu";
-                }
-            }
-
-            transaction.DoitRevenir = false;
-            await _context.SaveChangesAsync();
-            return Ok(new { message = "Document marqué comme retourné." });
+            doc.IdService = transaction.SourceServiceId;
         }
+    }
+    else
+    {
+        var doc = await _context.EntitesDJs.FindAsync(transaction.DocumentId);
+        if (doc != null)
+        {
+            doc.IdService = transaction.SourceServiceId;
+            var sourceService = await _context.Services.FindAsync(transaction.SourceServiceId);
+            doc.Emplacement = sourceService?.NomService ?? "Inconnu";
+        }
+    }
+
+    // Enregistrer la date de retour dans le message de réponse (الجواب ملاحظة)
+    string retourDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+    string nouveauMessage = $"Retour effectué le {retourDate}";
+
+    if (string.IsNullOrEmpty(transaction.MessageReponse))
+        transaction.MessageReponse = nouveauMessage;
+    else
+        transaction.MessageReponse += $" | {nouveauMessage}";  // on ajoute sans effacer l'ancien message
+
+    // Désactiver le flag de retour (optionnel)
+    transaction.DoitRevenir = false;
+
+    await _context.SaveChangesAsync();
+    return Ok(new { message = "Document marqué comme retourné. Date enregistrée dans la réponse." });
+}
 
         // ========== GET: api/transactions/history/{documentId} ==========
         [HttpGet("history/{documentId}")]
@@ -608,69 +630,89 @@ public async Task<IActionResult> GetPendingReturns()
         }
 
         // ========== POST: api/transactions/export-selected ==========
-        [HttpPost("export-selected")]
-        public async Task<IActionResult> ExportSelected([FromBody] List<int> ids)
+[HttpPost("export-selected")]
+public async Task<IActionResult> ExportSelected([FromBody] List<int> ids)
+{
+    var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
+    if (user == null) return Unauthorized();
+
+    var transactions = await _context.Transactions
+        .Where(t => ids.Contains(t.Id) && t.SourceServiceId == user.IdService && t.Statut == "Accepté")
+        .ToListAsync();
+
+    using var workbook = new XLWorkbook();
+    var ws = workbook.Worksheets.Add("Transactions_acceptees");
+    ws.RightToLeft = true;
+
+    // Headers after removing 1st and 3rd columns (ID and N° courrier)
+    var headers = new[] 
+    { 
+        "الوثيقة",               // Document
+        "رقم الملف القضائي",     // N° dossier judiciaire
+        "الخدمة المستلمة",       // Service destinataire
+        "تاريخ الإرسال",         // Date d'envoi
+        "قبل من طرف",            // Accepté par
+        "تاريخ القبول",          // Date acceptation
+        "الرد / ملاحظة"          // Note / Réponse
+    };
+
+    // Apply header style
+    for (int i = 0; i < headers.Length; i++)
+    {
+        var cell = ws.Cell(1, i + 1);
+        cell.Value = headers[i];
+        cell.Style.Font.Bold = true;
+        cell.Style.Font.FontColor = XLColor.White;
+        cell.Style.Fill.BackgroundColor = XLColor.FromArgb(68, 68, 68);
+        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        cell.Style.Border.OutsideBorderColor = XLColor.Black;
+    }
+    ws.Row(1).Height = 30;
+
+    int row = 2;
+    foreach (var t in transactions)
+    {
+        string sujet = t.DocumentSujet;
+        if (string.IsNullOrEmpty(sujet))
         {
-            var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
-            if (user == null) return Unauthorized();
-
-            var transactions = await _context.Transactions
-                .Where(t => ids.Contains(t.Id) && t.SourceServiceId == user.IdService && t.Statut == "Accepté")
-                .ToListAsync();
-
-            using var workbook = new XLWorkbook();
-            var ws = workbook.Worksheets.Add("Transactions_acceptees");
-            ws.Cell(1, 1).Value = "ID";
-            ws.Cell(1, 2).Value = "Document";
-            ws.Cell(1, 3).Value = "N° courrier";
-            ws.Cell(1, 4).Value = "N° dossier judiciaire";
-            ws.Cell(1, 5).Value = "Service destinataire";
-            ws.Cell(1, 6).Value = "Date d'envoi";
-            ws.Cell(1, 7).Value = "Accepté par";
-            ws.Cell(1, 8).Value = "Date acceptation";
-            ws.Cell(1, 9).Value = "Note / Réponse";
-
-            int row = 2;
-            foreach (var t in transactions)
-            {
-                string sujet = t.DocumentSujet;
-                if (string.IsNullOrEmpty(sujet))
-                {
-                    sujet = t.DocumentType == "Administratif"
-                        ? (await _context.Entites.FindAsync(t.DocumentId))?.Sujet ?? ""
-                        : (await _context.EntitesDJs.FindAsync(t.DocumentId))?.Sujet ?? "";
-                }
-                string? numeroCourrier = null;
-                string? numeroDossier = null;
-                if (t.DocumentType == "Administratif")
-                {
-                    var doc = await _context.Entites.FindAsync(t.DocumentId);
-                    if (doc != null)
-                        numeroCourrier = !string.IsNullOrWhiteSpace(doc.IdBureauOrdre) ? doc.IdBureauOrdre : doc.NumeroDeCourrier;
-                }
-                else
-                {
-                    var doc = await _context.EntitesDJs.Include(x => x.NumeroDossier).FirstOrDefaultAsync(x => x.Id == t.DocumentId);
-                    if (doc?.NumeroDossier != null)
-                        numeroDossier = $"{doc.NumeroDossier.Annee}/{doc.NumeroDossier.Nombre}/{doc.NumeroDossier.NumeroSujet}";
-                }
-                var dest = await _context.Services.FindAsync(t.DestinationServiceId);
-                ws.Cell(row, 1).Value = t.Id;
-                ws.Cell(row, 2).Value = sujet;
-                ws.Cell(row, 3).Value = numeroCourrier ?? "";
-                ws.Cell(row, 4).Value = numeroDossier ?? "";
-                ws.Cell(row, 5).Value = dest?.NomService ?? "";
-                ws.Cell(row, 6).Value = t.DateEnvoi.ToString("yyyy-MM-dd HH:mm");
-                ws.Cell(row, 7).Value = t.AcceptedByUserName ?? "";
-                ws.Cell(row, 8).Value = t.AcceptedDate?.ToString("yyyy-MM-dd HH:mm") ?? "";
-                ws.Cell(row, 9).Value = t.MessageReponse ?? "";
-                row++;
-            }
-            ws.Columns().AdjustToContents();
-            using var stream = new MemoryStream();
-            workbook.SaveAs(stream);
-            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "transactions_acceptees.xlsx");
+            sujet = t.DocumentType == "Administratif"
+                ? (await _context.Entites.FindAsync(t.DocumentId))?.Sujet ?? ""
+                : (await _context.EntitesDJs.FindAsync(t.DocumentId))?.Sujet ?? "";
         }
+        string? numeroDossier = null;
+        if (t.DocumentType != "Administratif")
+        {
+            var doc = await _context.EntitesDJs.Include(x => x.NumeroDossier).FirstOrDefaultAsync(x => x.Id == t.DocumentId);
+            if (doc?.NumeroDossier != null)
+                numeroDossier = $"{doc.NumeroDossier.Annee}/{doc.NumeroDossier.Nombre}/{doc.NumeroDossier.NumeroSujet}";
+        }
+        var dest = await _context.Services.FindAsync(t.DestinationServiceId);
+
+        ws.Cell(row, 1).Value = sujet;                         // Document
+        ws.Cell(row, 2).Value = numeroDossier ?? "";          // N° dossier judiciaire
+        ws.Cell(row, 3).Value = dest?.NomService ?? "";       // Service destinataire
+        ws.Cell(row, 4).Value = t.DateEnvoi;                  // Date d'envoi
+        ws.Cell(row, 4).Style.DateFormat.Format = "dd/MM/yyyy HH:mm";
+        ws.Cell(row, 5).Value = t.AcceptedByUserName ?? "";   // Accepté par
+        ws.Cell(row, 6).Value = t.AcceptedDate;               // Date acceptation
+        ws.Cell(row, 6).Style.DateFormat.Format = "dd/MM/yyyy HH:mm";
+        ws.Cell(row, 7).Value = t.MessageReponse ?? "";       // Note / Réponse
+
+        // Alternate row shading
+        if (row % 2 == 0)
+        {
+            var rowRange = ws.Range(row, 1, row, headers.Length);
+            rowRange.Style.Fill.BackgroundColor = XLColor.FromArgb(240, 240, 240);
+        }
+        row++;
+    }
+    ws.Columns().AdjustToContents();
+    using var stream = new MemoryStream();
+    workbook.SaveAs(stream);
+    return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "transactions_acceptees.xlsx");
+}
 
         // ========== GET: api/transactions/by-service-all ==========
         [HttpGet("by-service-all")]

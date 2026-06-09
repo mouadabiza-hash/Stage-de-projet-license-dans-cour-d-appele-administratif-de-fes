@@ -8,6 +8,7 @@ function TransactionsOutgoing() {
   const { user } = useAuth();
   const locale = i18n.resolvedLanguage?.startsWith('ar') ? 'ar-MA' : 'fr-FR';
   const isAdmin = user?.role === 'Admin';
+  const isGreffier = user?.role === 'Greffier';  // ✅ pour afficher la colonne
 
   const [transactions, setTransactions] = useState([]);
   const [filteredTransactions, setFilteredTransactions] = useState([]);
@@ -18,6 +19,9 @@ function TransactionsOutgoing() {
   const [selectedMonth, setSelectedMonth] = useState('');
   const [services, setServices] = useState([]);
   const [selectedServiceId, setSelectedServiceId] = useState('');
+
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
 
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
@@ -31,19 +35,30 @@ function TransactionsOutgoing() {
     { value: 10, label: 'أكتوبر' }, { value: 11, label: 'نوفمبر' }, { value: 12, label: 'ديسمبر' }
   ];
 
-  useEffect(() => { if (isAdmin && viewMode === 'byService' && services.length === 0) fetchServices(); }, [isAdmin, viewMode]);
-  useEffect(() => { fetchTransactions(); }, [selectedYear, selectedMonth, viewMode, selectedServiceId]);
+  useEffect(() => {
+    if (isAdmin && viewMode === 'byService' && services.length === 0) fetchServices();
+  }, [isAdmin, viewMode]);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, [selectedYear, selectedMonth, viewMode, selectedServiceId]);
 
   const fetchServices = async () => {
-    try { const res = await axios.get('/api/transactions/services-list'); setServices(res.data); } catch {}
+    try {
+      const res = await axios.get('/api/transactions/services-list');
+      setServices(res.data);
+    } catch (err) {}
   };
 
   const fetchTransactions = async () => {
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
       let data = [];
       if (viewMode === 'sent') {
-        const res = await axios.get('/api/transactions/outgoing', { params: { year: selectedYear || undefined, month: selectedMonth || undefined } });
+        const res = await axios.get('/api/transactions/outgoing', {
+          params: { year: selectedYear || undefined, month: selectedMonth || undefined }
+        });
         data = res.data;
       } else if (viewMode === 'all') {
         const [outgoingRes, incomingRes] = await Promise.all([
@@ -53,36 +68,72 @@ function TransactionsOutgoing() {
         data = [...outgoingRes.data, ...incomingRes.data];
         data = data.filter((tx, idx, self) => self.findIndex(t => t.id === tx.id) === idx);
       } else if (viewMode === 'byService' && isAdmin && selectedServiceId) {
-        const res = await axios.get('/api/transactions/by-service-all', { params: { serviceId: selectedServiceId, year: selectedYear || undefined, month: selectedMonth || undefined } });
+        const res = await axios.get('/api/transactions/by-service-all', {
+          params: { serviceId: selectedServiceId, year: selectedYear || undefined, month: selectedMonth || undefined }
+        });
         data = res.data;
       }
-      setTransactions(data); setFilteredTransactions(data); setCurrentPage(1);
-    } catch (err) { setError(t('erreur_chargement')); }
-    finally { setLoading(false); }
+      setTransactions(data);
+      setFilteredTransactions(data);
+      setSelectedIds([]);
+      setSelectAll(false);
+      setCurrentPage(1);
+    } catch (err) {
+      setError(t('erreur_chargement'));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleViewModeChange = (mode) => { setViewMode(mode); if (mode !== 'byService') setSelectedServiceId(''); };
+  const handleSelectAll = () => {
+    if (selectAll) setSelectedIds([]);
+    else setSelectedIds(filteredTransactions.map(t => t.id));
+    setSelectAll(!selectAll);
+  };
+
+  const handleSelectOne = (id) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+    setSelectAll(false);
+  };
+
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode);
+    if (mode !== 'byService') setSelectedServiceId('');
+  };
   const handleServiceChange = (e) => setSelectedServiceId(e.target.value);
   const handleYearChange = (e) => setSelectedYear(e.target.value);
   const handleMonthChange = (e) => setSelectedMonth(e.target.value);
+
+  const exportSelectedTransactions = async () => {
+    if (selectedIds.length === 0) {
+      alert(t('selection_requise'));
+      return;
+    }
+    try {
+      const response = await axios.post('/api/transactions/export-selected', selectedIds, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'transactions_acceptees.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(t('erreur_export'));
+    }
+  };
 
   const indexOfLast = currentPage * rowsPerPage;
   const indexOfFirst = indexOfLast - rowsPerPage;
   const currentTransactions = filteredTransactions.slice(indexOfFirst, indexOfLast);
   const totalPages = Math.ceil(filteredTransactions.length / rowsPerPage);
-  const handlePageChange = (newPage) => { if (newPage >= 1 && newPage <= totalPages) setCurrentPage(newPage); };
-
-  const exportToExcel = async () => {
-    if (filteredTransactions.length === 0) { alert(t('aucune_donnee_export')); return; }
-    try {
-      const ids = filteredTransactions.map(t => t.id);
-      const response = await axios.post('/api/transactions/export-selected', ids, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `transactions_${new Date().toISOString().slice(0,19)}.xlsx`);
-      document.body.appendChild(link); link.click(); link.remove(); window.URL.revokeObjectURL(url);
-    } catch { setError(t('erreur_export')); }
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) setCurrentPage(newPage);
   };
 
   return (
@@ -91,42 +142,101 @@ function TransactionsOutgoing() {
       {error && <div className="error-message">{error}</div>}
       <div className="filters" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className={viewMode === 'sent' ? 'btn-primary' : 'btn-secondary'} onClick={() => handleViewModeChange('sent')}>{t('mes_transactions_envoyees') || 'معاملتي'}</button>
-          <button className={viewMode === 'all' ? 'btn-primary' : 'btn-secondary'} onClick={() => handleViewModeChange('all')}>{t('toutes_mes_transactions') || 'كل معاملاتي'}</button>
-          {isAdmin && <button className={viewMode === 'byService' ? 'btn-primary' : 'btn-secondary'} onClick={() => handleViewModeChange('byService')}>{t('afficher_par_service') || 'عرض حسب الخدمة'}</button>}
-          {isAdmin && viewMode === 'byService' && <select value={selectedServiceId} onChange={handleServiceChange} style={{ minWidth: '200px' }}><option value="">{t('choisir_service')}</option>{services.map(s => <option key={s.idService} value={s.idService}>{s.nomService}</option>)}</select>}
-          <select value={selectedYear} onChange={handleYearChange}><option value="">{t('toutes_annees')}</option>{years.map(y => <option key={y} value={y}>{y}</option>)}</select>
-          <select value={selectedMonth} onChange={handleMonthChange}><option value="">{t('tous_mois')}</option>{months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select>
+          <button className={viewMode === 'sent' ? 'btn-primary' : 'btn-secondary'} onClick={() => handleViewModeChange('sent')}>
+            {t('mes_transactions_envoyees') || 'معاملاتي'}
+          </button>
+          <button className={viewMode === 'all' ? 'btn-primary' : 'btn-secondary'} onClick={() => handleViewModeChange('all')}>
+            {t('toutes_mes_transactions') || 'كل معاملاتي'}
+          </button>
+          {isAdmin && (
+            <button className={viewMode === 'byService' ? 'btn-primary' : 'btn-secondary'} onClick={() => handleViewModeChange('byService')}>
+              {t('afficher_par_service') || 'عرض حسب الخدمة'}
+            </button>
+          )}
+          {isAdmin && viewMode === 'byService' && (
+            <select value={selectedServiceId} onChange={handleServiceChange} style={{ minWidth: '200px' }}>
+              <option value="">{t('choisir_service')}</option>
+              {services.map(s => <option key={s.idService} value={s.idService}>{s.nomService}</option>)}
+            </select>
+          )}
+          <select value={selectedYear} onChange={handleYearChange}>
+            <option value="">{t('toutes_annees')}</option>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select value={selectedMonth} onChange={handleMonthChange}>
+            <option value="">{t('tous_mois')}</option>
+            {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <button className="btn-primary" onClick={exportToExcel}>📊 {t('exporter_excel')}</button>
-          <div className="rows-per-page"><span>{t('afficher')}</span><select value={rowsPerPage} onChange={e=>{setRowsPerPage(Number(e.target.value)); setCurrentPage(1);}}><option value={5}>5</option><option value={10}>10</option><option value={15}>15</option><option value={20}>20</option></select><span>{t('lignes')}</span></div>
+          <button className="btn-primary" onClick={exportSelectedTransactions}>
+            📊 {t('exporter_selection')}
+          </button>
+          <div className="rows-per-page">
+            <span>{t('afficher')}</span>
+            <select value={rowsPerPage} onChange={e => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
+              <option value={5}>5</option><option value={10}>10</option><option value={15}>15</option><option value={20}>20</option>
+            </select>
+            <span>{t('lignes')}</span>
+          </div>
         </div>
       </div>
+
       <div className="data-table-wrapper">
         <table className="modern-table">
-          <thead><tr><th>{t('document')}</th><th>{t('numero_courrier')}</th><th>{t('numero_dossier_judiciaire')}</th>{viewMode === 'byService' && <th>{t('service_source')}</th>}<th>{t('service_destinataire')}</th><th>{t('date_envoi')}</th><th>{t('accepte_par')}</th><th>{t('date_acceptation')}</th><th>{t('reponse_note')}</th></tr></thead>
+          <thead>
+            <tr>
+              <th style={{ width: '40px' }}>
+                <input type="checkbox" checked={selectAll} onChange={handleSelectAll} />
+              </th>
+              <th>{t('document')}</th>
+              {/* ✅ Colonne "رقم المراسلة" visible uniquement pour Greffier */}
+              {isGreffier && <th>{t('numero_courrier')}</th>}
+              <th>{t('numero_dossier_judiciaire')}</th>
+              {viewMode === 'byService' && <th>{t('service_source')}</th>}
+              <th>{t('service_destinataire')}</th>
+              <th>{t('date_envoi')}</th>
+              <th>{t('accepte_par')}</th>
+              <th>{t('date_acceptation')}</th>
+              <th>{t('reponse_note')}</th>
+            </tr>
+          </thead>
           <tbody>
-            {loading ? <tr><td colSpan={viewMode==='byService'?9:8} className="loading">{t('chargement')}</td></tr> :
-             currentTransactions.length === 0 ? <tr><td colSpan={viewMode==='byService'?9:8} className="text-muted">{t('aucune_transaction_acceptee')}</td></tr> :
-             currentTransactions.map(tx => (
-               <tr key={tx.id}>
-                 <td>{tx.documentSujet}</td>
-                 <td>{tx.numeroCourrier || '-'}</td>
-                 <td>{tx.numeroDossierJudiciaire || '-'}</td>
-                 {viewMode === 'byService' && <td className="source-service">{tx.sourceServiceNom || '-'}</td>}
-                 <td className="dest-service">{tx.destinationServiceNom}</td>
-                 <td>{new Date(tx.dateEnvoi).toLocaleString(locale)}</td>
-                 <td>{tx.acceptedByUserName || '-'}</td>
-                 <td>{tx.acceptedDate ? new Date(tx.acceptedDate).toLocaleString(locale) : '-'}</td>
-                 <td>{tx.messageReponse || '-'}</td>
-               </tr>
-             ))}
+            {loading ? (
+              <tr><td colSpan={viewMode === 'byService' ? (isGreffier ? 10 : 9) : (isGreffier ? 9 : 8)} className="loading">{t('chargement')}</td></tr>
+            ) : currentTransactions.length === 0 ? (
+              <tr><td colSpan={viewMode === 'byService' ? (isGreffier ? 10 : 9) : (isGreffier ? 9 : 8)} className="text-muted">{t('aucune_transaction_acceptee')}</td></tr>
+            ) : (
+              currentTransactions.map(tx => (
+                <tr key={tx.id}>
+                  <td>
+                    <input type="checkbox" checked={selectedIds.includes(tx.id)} onChange={() => handleSelectOne(tx.id)} />
+                  </td>
+                  <td>{tx.documentSujet}</td>
+                  {isGreffier && <td>{tx.numeroCourrier || '-'}</td>}
+                  <td>{tx.numeroDossierJudiciaire || '-'}</td>
+                  {viewMode === 'byService' && <td className="source-service">{tx.sourceServiceNom || '-'}</td>}
+                  <td className="dest-service">{tx.destinationServiceNom}</td>
+                  <td>{new Date(tx.dateEnvoi).toLocaleString(locale)}</td>
+                  <td>{tx.acceptedByUserName || '-'}</td>
+                  <td>{tx.acceptedDate ? new Date(tx.acceptedDate).toLocaleString(locale) : '-'}</td>
+                  <td>{tx.messageReponse || '-'}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
-      {totalPages > 1 && <div className="pagination"><button onClick={()=>handlePageChange(currentPage-1)} disabled={currentPage===1}>{t('precedent')}</button><span>{t('page')} {currentPage} / {totalPages}</span><button onClick={()=>handlePageChange(currentPage+1)} disabled={currentPage===totalPages}>{t('suivant')}</button></div>}
+
+      {totalPages > 1 && (
+        <div className="pagination">
+          <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1}>{t('precedent')}</button>
+          <span>{t('page')} {currentPage} / {totalPages}</span>
+          <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages}>{t('suivant')}</button>
+        </div>
+      )}
     </div>
   );
 }
+
 export default TransactionsOutgoing;

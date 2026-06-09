@@ -467,7 +467,7 @@
 "col_letterDate": "التاريخ الرسالة",
 "col_tribunalSource": "المصدر",
 "col_date": "التاريخ",
-"col_numeroDossier": "رقم الملف",
+"col_numeroDossier": "رقم الملف الإستنافي",
 "col_numeroPremiereInstance": "الرقم الابتدائي",
 "col_description": "الوصف",
 "col_parentJudiciaireId": "معرف الملف الأصلي",
@@ -522,7 +522,38 @@
 "masquee": "مخفية",
 "confirmation_masquer_transaction": "هل تريد إخفاء هذه المعاملة؟ لن تظهر بعد الآن في لوحة القيادة.",
 "transaction_restauree": "تم استعادة المعاملة",
-"ajouter_numero_appel": "إضافة رقم الاستنافي"
+"ajouter_numero_appel": "إضافة رقم الاستنافي",
+"وثيقة مربوطة بملف":"وثيقة مربوطة بملف",
+"ملف":"ملف",
+"type_dossier": "نوع الملف",
+"courrier_entrant": "مراسلة واردة",
+"courrier_sortant": "مراسلة صادرة",
+"interne": "داخلي",
+
+"idBureauOrdre": "رقم مكتب الضبط",
+"numeroDossier":  "رقم الملف الإستنافي",
+"numeroPremiereInstance": "الرقم الابتدائي",
+"numeroDeCourrier": "رقم المراسلة",
+
+"sujet": "الموضوع",
+"tribunalSource": "المحكمة / المصدر",
+
+"serviceNom": "الخدمة",
+
+"typeRegistre": "نوع السجل",
+"typeCorrespondance": "نوع المراسلة",
+"typeDocument": "نوع الوثيقة",
+
+"typeJudiciaire": "النوع القضائي",
+"linkedDocumentSource": "مصدر الوثيقة المرتبطة",
+"linkedDocumentType": "نوع الوثيقة المرتبطة",
+"estTransmissible": "قابل للإحالة",
+
+"dateArchivage": "تاريخ الأرشفة",
+"etatArchive": "الحالة",
+"motifDeRetrait": "سبب السحب",
+"effectuePar": "تم بواسطة",
+"dateDeRetour": "تاريخ الإرجاع"
 }
 
 

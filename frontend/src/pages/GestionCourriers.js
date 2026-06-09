@@ -46,7 +46,8 @@ function GestionCourriers() {
     return 'file';
   });
 
-  const [sourceOptions, setSourceOptions] = useState([]);
+
+
   const [linkedDocSourceOptions, setLinkedDocSourceOptions] = useState([]);
   const [pdfMessage, setPdfMessage] = useState({ text: '', type: '' });
   const [errorMessage, setErrorMessage] = useState({ text: '', visible: false });
@@ -74,15 +75,16 @@ function GestionCourriers() {
 
   const [showAnswerModal, setShowAnswerModal] = useState(false);
   const [answerTarget, setAnswerTarget] = useState(null);
-  const [answerForm, setAnswerForm] = useState({
-    source: '', sujet: '', date: new Date().toISOString().slice(0, 10), lienPdf: '', description: '', estTransmissible: false
-  });
+const [answerForm, setAnswerForm] = useState({
+  source: '', sujet: '', date: new Date().toISOString().slice(0, 10), lienPdf: '', description: '', estTransmissible: false
+});
   const [uploadingAnswer, setUploadingAnswer] = useState(false);
 
   const [showViewReplyModal, setShowViewReplyModal] = useState(false);
   const [viewedReply, setViewedReply] = useState(null);
   const [editingReply, setEditingReply] = useState(false);
   const [editReplyForm, setEditReplyForm] = useState({});
+  const [submittingAnswer, setSubmittingAnswer] = useState(false);
 
   // ---------- transfer ----------
   const [showTransferChoice, setShowTransferChoice] = useState(false);
@@ -227,7 +229,15 @@ function GestionCourriers() {
       dateArrivee: '', numeroDossier: '', linkedDocumentType: '', linkedDocumentSource: ''
     };
   }
+const [sourceOptions, setSourceOptions] = useState([]);
 
+// Helper to get label from source code
+const getSourceLabel = (code) => {
+  if (!code) return '-';
+  const item = sourceOptions.find(opt => String(opt.code) === String(code));
+  if (!item) return code;
+  return locale === 'ar' ? item.valueAr : item.valueFr;
+};
 const fetchData = useCallback(async () => {
   setLoading(true);
   try {
@@ -337,6 +347,7 @@ const fetchData = useCallback(async () => {
     else setJudMode('file');
     window.scrollTo({ top: 0 });
   };
+  
 
   const isDuplicateNumeroSource = () => {
     if (tab !== TYPE_ADMINISTRATIF && tab !== TYPE_SORTANT) return false;
@@ -628,26 +639,38 @@ const fetchData = useCallback(async () => {
     setShowReplyModal(true);
   };
 
-  const submitReply = async () => {
-    const { destinataire, sujet, date, lienPdf, description } = replyForm;
-    if (!sujet.trim()) {
-      showError(t('sujet_requis') || 'الموضوع مطلوب');
-      return;
-    }
-    try {
-      await axios.post('/api/courriers', {
-        idBureauOrdre: '', date: new Date(date).toISOString(), source: 'Réponse',
-        sujet: sujet.trim(), destinataire: destinataire.trim(), description: description.trim(),
-        etat: 'Nouveau', lienPdf: lienPdf.trim(), direction: 'Sortant',
-        typeRegistre: 'Morasalat', typeCorrespondance: 'Sortante',
-        parentId: replyTarget.id, idService: serviceId, numeroDeCourrier: '', estTransmissible: false,
-      });
-      showSuccess(t('reply_added'));
-      setShowReplyModal(false);
-      setRepliedIds(prev => new Set(prev).add(Number(replyTarget.id)));
-      fetchData();
-    } catch (err) { showError(getErrorMessage(err, t('erreur_enregistrement'))); }
-  };
+const submitReply = async () => {
+  const { destinataire, sujet, date, lienPdf, description } = replyForm;
+  if (!sujet.trim()) {
+    showError(t('sujet_requis') || 'الموضوع مطلوب');
+    return;
+  }
+  try {
+    await axios.post('/api/courriers', {
+      idBureauOrdre: '',
+      date: new Date(date).toISOString(),
+      source: 'Réponse',                     // Fixed source for replies
+      sujet: sujet.trim(),
+      destinataire: destinataire.trim() || 'محكمة الاستئناف',   // ← from dropdown
+      description: description.trim(),
+      etat: 'Nouveau',
+      lienPdf: lienPdf.trim(),
+      direction: 'Sortant',
+      typeRegistre: 'Morasalat',
+      typeCorrespondance: 'Sortante',
+      parentId: replyTarget.id,
+      idService: serviceId,
+      numeroDeCourrier: '',
+      estTransmissible: false,
+    });
+    showSuccess(t('reply_added'));
+    setShowReplyModal(false);
+    setRepliedIds(prev => new Set(prev).add(Number(replyTarget.id)));
+    fetchData();
+  } catch (err) {
+    showError(getErrorMessage(err, t('erreur_enregistrement')));
+  }
+};
 
   const handleReplyUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return;
@@ -667,24 +690,50 @@ const fetchData = useCallback(async () => {
     setShowAnswerModal(true);
   };
 
-  const submitAnswer = async () => {
-    const { source, sujet, date, lienPdf, description, estTransmissible } = answerForm;
-    if (!description.trim()) { showError(t('reponse_requise') || 'La réponse est obligatoire.'); return; }
-    try {
-      await axios.post('/api/courriers', {
-        idBureauOrdre: answerTarget.idBureauOrdre || '', date: new Date(date).toISOString(),
-        source: source.trim() || 'Réponse', sujet: sujet.trim() || 'RE: ' + answerTarget.sujet,
-        destinataire: 'محكمة الاستئناف', description: description.trim(), etat: 'Nouveau',
-        lienPdf: lienPdf.trim(), direction: 'Entrant', typeRegistre: 'Waridat',
-        typeCorrespondance: null, parentId: answerTarget.id, idService: serviceId,
-        numeroDeCourrier: '', estTransmissible: Boolean(estTransmissible),
-      });
-      showSuccess(t('reply_added'));
-      setShowAnswerModal(false);
-      setRepliedIds(prev => new Set(prev).add(Number(answerTarget.id)));
-      fetchData();
-    } catch (err) { showError(getErrorMessage(err, t('erreur_enregistrement'))); }
-  };
+const submitAnswer = async () => {
+  // Prevent double submission
+  if (submittingAnswer) return;
+  setSubmittingAnswer(true);
+
+  const { source, sujet, date, lienPdf, description, estTransmissible } = answerForm;
+  if (!description.trim()) {
+    showError(t('reponse_requise') || 'La réponse est obligatoire.');
+    setSubmittingAnswer(false);
+    return;
+  }
+
+  // Debug: log the target document
+  console.log('Answer target ID:', answerTarget?.id);
+  console.log('Answer target sujet:', answerTarget?.sujet);
+
+  try {
+    await axios.post('/api/courriers', {
+      idBureauOrdre: answerTarget.idBureauOrdre || '',
+      date: new Date(date).toISOString(),
+      source: source.trim() || 'Réponse',
+      sujet: sujet.trim() || 'RE: ' + answerTarget.sujet,
+      destinataire: 'محكمة الاستئناف',   // fixed, because answer is for outgoing documents
+      description: description.trim(),
+      etat: 'Nouveau',
+      lienPdf: lienPdf.trim(),
+      direction: 'Entrant',
+      typeRegistre: 'Waridat',
+      typeCorrespondance: null,
+      parentId: answerTarget.id,          // ← link to the outgoing document
+      idService: serviceId,
+      numeroDeCourrier: '',
+      estTransmissible: Boolean(estTransmissible),
+    });
+    showSuccess(t('reply_added'));
+    setShowAnswerModal(false);
+    setRepliedIds(prev => new Set(prev).add(Number(answerTarget.id)));
+    fetchData();
+  } catch (err) {
+    showError(getErrorMessage(err, t('erreur_enregistrement')));
+  } finally {
+    setSubmittingAnswer(false);
+  }
+};
 
   const handleAnswerUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return;
@@ -704,15 +753,17 @@ const fetchData = useCallback(async () => {
     else { showError(t('no_reply')); }
   };
 
-  const startEditingReply = () => {
-    setEditReplyForm({
-      source: viewedReply.source || '', sujet: viewedReply.sujet || '',
-      date: viewedReply.date ? viewedReply.date.slice(0, 10) : '',
-      description: viewedReply.description || '', lienPdf: viewedReply.lienPdf || '',
-      destinataire: viewedReply.destinataire || ''
-    });
-    setEditingReply(true);
-  };
+const startEditingReply = () => {
+  setEditReplyForm({
+    source: viewedReply.source || '',
+    destinataire: viewedReply.destinataire || '',
+    sujet: viewedReply.sujet || '',
+    date: viewedReply.date ? viewedReply.date.slice(0, 10) : '',
+    description: viewedReply.description || '',
+    lienPdf: viewedReply.lienPdf || '',
+  });
+  setEditingReply(true);
+};
 
   const cancelEditingReply = () => setEditingReply(false);
 
@@ -947,11 +998,10 @@ const fetchData = useCallback(async () => {
   };
 
   // ========== Helper: build options arrays ==========
-  const sourceOpts = sourceOptions.map(opt => ({ value: opt.code, label: locale === 'ar' ? opt.valueAr : opt.valueFr }));
-  const tribunalOpts = tribunalTypes.map(tt => ({ value: tt.code, label: locale === 'ar' ? tt.valueAr : tt.valueFr }));
-  const judicialOpts = judicialTypes.map(jt => ({ value: jt.code, label: locale === 'ar' ? jt.valueAr : jt.valueFr }));
-  const stateOpts = documentStates.map(s => ({ value: s.code, label: locale === 'ar' ? s.valueAr : s.valueFr }));
-  const linkedDocOpts = linkedDocTypes.map(ld => ({ value: ld.code, label: locale === 'ar' ? ld.valueAr : ld.valueFr }));
+const sourceOpts = sourceOptions.map(opt => ({ value: opt.code, label: locale === 'ar' ? opt.valueAr : opt.valueFr }));
+const tribunalOpts = tribunalTypes.map(tt => ({ value: tt.code, label: locale === 'ar' ? tt.valueAr : tt.valueFr }));  const stateOpts = documentStates.map(s => ({ value: s.code, label: locale === 'ar' ? s.valueAr : s.valueFr }));
+const judicialOpts = judicialTypes.map(jt => ({ value: jt.code, label: locale === 'ar' ? jt.valueAr : jt.valueFr })); 
+const linkedDocOpts = linkedDocTypes.map(ld => ({ value: ld.code, label: locale === 'ar' ? ld.valueAr : ld.valueFr }));
   const linkedDocSourceOpts = linkedDocSourceOptions.map(ls => ({ value: ls.code, label: locale === 'ar' ? ls.valueAr : ls.valueFr }));
   const parentFileOpts = parentFiles.map(p => ({ value: p.id, label: p.numeroDossier || String(p.id) }));
   const serviceOpts = services.filter(s => s.idService !== serviceId).map(s => ({ value: s.idService, label: s.nomService }));
@@ -1216,6 +1266,10 @@ const fetchData = useCallback(async () => {
           </form>
         </div>
       )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button className="btn-primary" onClick={exportToExcel}>📊 {t('exporter_excel')}</button>
+            <button className="btn-primary" onClick={openImportModal}>📥 {t('importer_excel')}</button>
+          </div>
 
       {/* Table Controls */}
       <div className="data-table-wrapper" style={{ marginTop: '2rem' }}>
@@ -1237,10 +1291,7 @@ const fetchData = useCallback(async () => {
               <span>{t('lignes')}</span>
             </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <button className="btn-primary" onClick={exportToExcel}>📊 {t('exporter_excel')}</button>
-            <button className="btn-primary" onClick={openImportModal}>📥 {t('importer_excel')}</button>
-          </div>
+
         </div>
 
         {/* Column Menu */}
@@ -1341,12 +1392,18 @@ const fetchData = useCallback(async () => {
                               </div>
                               <div className="reply-card-subject">{reply.sujet || '-'}</div>
                               <div className="reply-card-meta">
-                                <span className="meta-label">{t('col_replySource') || 'مصدر / مرسل إليه'}:</span>
-                                <span className="meta-value">{reply.source || reply.destinataire || '-'}</span>
+                                <span className="meta-label">
+                                  {reply.typeRegistre === 'Morasalat' ? t('destinataire') : t('source')}:
+                                </span>
+                                <span className="meta-value">
+                                  {reply.typeRegistre === 'Morasalat'
+                                    ? getSourceLabel(reply.destinataire)
+                                    : getSourceLabel(reply.source)}
+                                </span>
                               </div>
                               {reply.description && (
                                 <div className="reply-card-description">
-                                  <span className="meta-label">{t('الرد') || 'الرد'}:</span>
+                                  <span className="meta-label">{t('الرد')}:</span>
                                   <span className="meta-value">{reply.description.length > 120 ? reply.description.slice(0, 120) + '…' : reply.description}</span>
                                 </div>
                               )}
@@ -1375,8 +1432,6 @@ const fetchData = useCallback(async () => {
                           {!isSort && !isReply && !showReplyBtn && <button className="action-btn" onClick={() => openReplyModal(doc)} title={t('repondre')}>↩️ {t('repondre')}</button>}
                           {isSort && !isReply && !showReplyBtn && <button className="action-btn" onClick={() => openAnswerModal(doc)} title={t('ajouter_reponse')}>📝 {t('ajouter_reponse')}</button>}
                           {showReplyBtn && <button className="action-btn" onClick={() => handleViewReply(doc)} title={t('voir_reponse')}>👁️ {t('voir_reponse')}</button>}
-                          <button className="action-btn" onClick={() => handleViewHistory(doc)} title={t('historique_transactions')}>📜 {t('historique_transactions')}</button>
-                          {isJud && <button className="action-btn" onClick={() => handleViewWithdrawals(doc)} title={t('retraits')}>📤 {t('retraits')}</button>}
                           </td>
                       )}
                     </tr>
@@ -1478,111 +1533,125 @@ const fetchData = useCallback(async () => {
 
       {/* Reply Modal */}
       {showReplyModal && (
-        <div className="modal-overlay" onClick={() => setShowReplyModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="registry-panel-header">
-              <h3>{t('repondre')}</h3>
-              <button className="btn-secondary" onClick={() => setShowReplyModal(false)}>{t('fermer')}</button>
+  <div className="modal-overlay" onClick={() => setShowReplyModal(false)}>
+    <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="registry-panel-header">
+        <h3>{t('repondre')}</h3>
+        <button className="btn-secondary" onClick={() => setShowReplyModal(false)}>{t('fermer')}</button>
+      </div>
+      <div className="form-grid">
+        {/* Destinataire dropdown */}
+        <div className="form-field">
+          <label>{t('destinataire')}</label>
+          <SearchableSelect
+            name="destinataire"
+            value={replyForm.destinataire}
+            onChange={(e) => setReplyForm({ ...replyForm, destinataire: e.target.value })}
+            options={sourceOpts}
+            placeholder={t('choisir')}
+          />
+        </div>
+        <div className="form-field">
+          <label>{t('sujet')} *</label>
+          <input className="form-input" value={replyForm.sujet} onChange={e => setReplyForm({ ...replyForm, sujet: e.target.value })} required />
+        </div>
+        <div className="form-field">
+          <label>{t('date')}</label>
+          <input className="form-input" type="date" value={replyForm.date} onChange={e => setReplyForm({ ...replyForm, date: e.target.value })} />
+        </div>
+        <div className="form-field full-width">
+          <label>{t('document_pdf_word')}</label>
+          <div className="document-control">
+            <label className="document-upload-button">
+              {uploadingReply ? t('uploading') : t('choisir_fichier')}
+              <input type="file" accept=".pdf,.doc,.docx" onChange={handleReplyUpload} />
+            </label>
+            <div className={replyForm.lienPdf ? 'document-link-preview filled' : 'document-link-preview'}>
+              <span>{replyForm.lienPdf ? getDocumentName(replyForm.lienPdf) : t('aucun_fichier')}</span>
+              {replyForm.lienPdf && <a href={getDocumentHref(replyForm.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}
             </div>
-            <div className="form-grid">
-              <div className="form-field">
-                <label>{t('destinataire')}</label>
-                <input className="form-input" value={replyForm.destinataire} onChange={e => setReplyForm({ ...replyForm, destinataire: e.target.value })} />
-              </div>
-              <div className="form-field">
-                <label>{t('sujet')} *</label>
-                <input className="form-input" value={replyForm.sujet} onChange={e => setReplyForm({ ...replyForm, sujet: e.target.value })} required />
-              </div>
-              <div className="form-field">
-                <label>{t('date')}</label>
-                <input className="form-input" type="date" value={replyForm.date} onChange={e => setReplyForm({ ...replyForm, date: e.target.value })} />
-              </div>
-              <div className="form-field full-width">
-                <label>{t('document_pdf_word')}</label>
-                <div className="document-control">
-                  <label className="document-upload-button">
-                    {uploadingReply ? t('uploading') : t('choisir_fichier')}
-                    <input type="file" accept=".pdf,.doc,.docx" onChange={handleReplyUpload} />
-                  </label>
-                  <div className={replyForm.lienPdf ? 'document-link-preview filled' : 'document-link-preview'}>
-                    <span>{replyForm.lienPdf ? getDocumentName(replyForm.lienPdf) : t('aucun_fichier')}</span>
-                    {replyForm.lienPdf && <a href={getDocumentHref(replyForm.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}
-                  </div>
-                  <div className="document-link-input">
-                    <input className="form-input" type="text" value={replyForm.lienPdf} onChange={e => setReplyForm({ ...replyForm, lienPdf: e.target.value })} placeholder={t('lien_manuel')} />
-                    {replyForm.lienPdf && <a href={getDocumentHref(replyForm.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}
-                  </div>
-                </div>
-              </div>
-              <div className="form-field full-width">
-                <label>{t('الرد')}</label>
-                <textarea className="form-input" value={replyForm.description} onChange={e => setReplyForm({ ...replyForm, description: e.target.value })} rows="3" />
-              </div>
-            </div>
-            <div className="form-actions">
-              <button className="btn-primary" onClick={submitReply}>{t('envoyer')}</button>
-              <button className="btn-secondary" onClick={() => setShowReplyModal(false)}>{t('annuler')}</button>
+            <div className="document-link-input">
+              <input className="form-input" type="text" value={replyForm.lienPdf} onChange={e => setReplyForm({ ...replyForm, lienPdf: e.target.value })} placeholder={t('lien_manuel')} />
+              {replyForm.lienPdf && <a href={getDocumentHref(replyForm.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}
             </div>
           </div>
         </div>
-      )}
+        <div className="form-field full-width">
+          <label>{t('الرد')}</label>
+          <textarea className="form-input" value={replyForm.description} onChange={e => setReplyForm({ ...replyForm, description: e.target.value })} rows="3" />
+        </div>
+      </div>
+      <div className="form-actions">
+        <button className="btn-primary" onClick={submitReply}>{t('envoyer')}</button>
+        <button className="btn-secondary" onClick={() => setShowReplyModal(false)}>{t('annuler')}</button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* Answer Modal */}
       {showAnswerModal && (
-        <div className="modal-overlay" onClick={() => setShowAnswerModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="registry-panel-header">
-              <h3>{t('ajouter_reponse')}</h3>
-              <button className="btn-secondary" onClick={() => setShowAnswerModal(false)}>{t('fermer')}</button>
+  <div className="modal-overlay" onClick={() => setShowAnswerModal(false)}>
+    <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="registry-panel-header">
+        <h3>{t('ajouter_reponse')}</h3>
+        <button className="btn-secondary" onClick={() => setShowAnswerModal(false)}>{t('fermer')}</button>
+      </div>
+      <div className="form-grid">
+        {/* Source dropdown */}
+        <div className="form-field">
+          <label>{t('source')}</label>
+          <SearchableSelect
+            name="source"
+            value={answerForm.source}
+            onChange={(e) => setAnswerForm({ ...answerForm, source: e.target.value })}
+            options={sourceOpts}
+            placeholder={t('choisir')}
+          />
+        </div>
+        <div className="form-field">
+          <label>{t('sujet')}</label>
+          <input className="form-input" value={answerForm.sujet} onChange={e => setAnswerForm({ ...answerForm, sujet: e.target.value })} />
+        </div>
+        <div className="form-field">
+          <label>{t('date')}</label>
+          <input className="form-input" type="date" value={answerForm.date} onChange={e => setAnswerForm({ ...answerForm, date: e.target.value })} />
+        </div>
+        <div className="form-field full-width">
+          <label>{t('document_pdf_word')}</label>
+          <div className="document-control">
+            <label className="document-upload-button">
+              {uploadingAnswer ? t('uploading') : t('choisir_fichier')}
+              <input type="file" accept=".pdf,.doc,.docx" onChange={handleAnswerUpload} />
+            </label>
+            <div className={answerForm.lienPdf ? 'document-link-preview filled' : 'document-link-preview'}>
+              <span>{answerForm.lienPdf ? getDocumentName(answerForm.lienPdf) : t('aucun_fichier')}</span>
+              {answerForm.lienPdf && <a href={getDocumentHref(answerForm.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}
             </div>
-            <div className="form-grid">
-              <div className="form-field">
-                <label>{t('source')}</label>
-                <input className="form-input" value={answerForm.source} onChange={e => setAnswerForm({ ...answerForm, source: e.target.value })} />
-              </div>
-              <div className="form-field">
-                <label>{t('sujet')}</label>
-                <input className="form-input" value={answerForm.sujet} onChange={e => setAnswerForm({ ...answerForm, sujet: e.target.value })} />
-              </div>
-              <div className="form-field">
-                <label>{t('date')}</label>
-                <input className="form-input" type="date" value={answerForm.date} onChange={e => setAnswerForm({ ...answerForm, date: e.target.value })} />
-              </div>
-              <div className="form-field full-width">
-                <label>{t('document_pdf_word')}</label>
-                <div className="document-control">
-                  <label className="document-upload-button">
-                    {uploadingAnswer ? t('uploading') : t('choisir_fichier')}
-                    <input type="file" accept=".pdf,.doc,.docx" onChange={handleAnswerUpload} />
-                  </label>
-                  <div className={answerForm.lienPdf ? 'document-link-preview filled' : 'document-link-preview'}>
-                    <span>{answerForm.lienPdf ? getDocumentName(answerForm.lienPdf) : t('aucun_fichier')}</span>
-                    {answerForm.lienPdf && <a href={getDocumentHref(answerForm.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}
-                  </div>
-                  <div className="document-link-input">
-                    <input className="form-input" type="text" value={answerForm.lienPdf} onChange={e => setAnswerForm({ ...answerForm, lienPdf: e.target.value })} placeholder={t('lien_manuel')} />
-                    {answerForm.lienPdf && <a href={getDocumentHref(answerForm.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}
-                  </div>
-                </div>
-              </div>
-              <div className="form-field">
-                <label className="checkbox-field">
-                  <input type="checkbox" checked={answerForm.estTransmissible} onChange={e => setAnswerForm({ ...answerForm, estTransmissible: e.target.checked })} />
-                  {t('transmissible')}
-                </label>
-              </div>
-              <div className="form-field full-width">
-                <label>{t('reponse')} *</label>
-                <textarea className="form-input" value={answerForm.description} onChange={e => setAnswerForm({ ...answerForm, description: e.target.value })} rows="4" required />
-              </div>
-            </div>
-            <div className="form-actions">
-              <button className="btn-primary" onClick={submitAnswer}>{t('envoyer')}</button>
-              <button className="btn-secondary" onClick={() => setShowAnswerModal(false)}>{t('annuler')}</button>
+            <div className="document-link-input">
+              <input className="form-input" type="text" value={answerForm.lienPdf} onChange={e => setAnswerForm({ ...answerForm, lienPdf: e.target.value })} placeholder={t('lien_manuel')} />
+              {answerForm.lienPdf && <a href={getDocumentHref(answerForm.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}
             </div>
           </div>
         </div>
-      )}
+        <div className="form-field">
+          <label className="checkbox-field">
+            <input type="checkbox" checked={answerForm.estTransmissible} onChange={e => setAnswerForm({ ...answerForm, estTransmissible: e.target.checked })} />
+            {t('transmissible')}
+          </label>
+        </div>
+        <div className="form-field full-width">
+          <label>{t('reponse')} *</label>
+          <textarea className="form-input" value={answerForm.description} onChange={e => setAnswerForm({ ...answerForm, description: e.target.value })} rows="4" required />
+        </div>
+      </div>
+      <div className="form-actions">
+        <button className="btn-primary" onClick={submitAnswer} disabled={submittingAnswer}>{submittingAnswer ? t('saving') : t('envoyer')}</button>  
+        <button className="btn-secondary" onClick={() => setShowAnswerModal(false)}>{t('annuler')}</button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* Multi Transfer Modal */}
       {showTransferModal && (
@@ -1740,55 +1809,108 @@ const fetchData = useCallback(async () => {
       )}
 
       {/* View Reply Modal */}
-      {showViewReplyModal && viewedReply && (
-        <div className="modal-overlay" onClick={() => setShowViewReplyModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="registry-panel-header">
-              <h3>{t('reponse')}</h3>
-              <button className="btn-secondary" onClick={() => setShowViewReplyModal(false)}>{t('fermer')}</button>
-            </div>
-            {!editingReply ? (
-              <>
-                <div className="form-grid">
-                  <div className="form-field"><label>{t('source')}</label><input className="form-input" value={viewedReply.source || ''} disabled /></div>
-                  {viewedReply.destinataire && <div className="form-field"><label>{t('destinataire')}</label><input className="form-input" value={viewedReply.destinataire} disabled /></div>}
-                  <div className="form-field"><label>{t('sujet')}</label><input className="form-input" value={viewedReply.sujet || ''} disabled /></div>
-                  <div className="form-field"><label>{t('date')}</label><input className="form-input" value={formatDate(viewedReply.date)} disabled /></div>
-                  {viewedReply.lienPdf && (
-                    <div className="form-field full-width">
-                      <label>{t('document_pdf_word')}</label>
-                      <a href={getDocumentHref(viewedReply.lienPdf)} target="_blank" rel="noreferrer" className="btn-secondary">{t('ouvrir')}</a>
-                    </div>
-                  )}
-                  <div className="form-field full-width"><label>{t('description')}</label><textarea className="form-input" value={viewedReply.description || ''} disabled rows="4" /></div>
-                </div>
-                <div className="form-actions">
-                  {(perms.canCreateAdministratif || perms.canCreateJuridique) && <button className="btn-primary" onClick={startEditingReply}>{t('modifier')}</button>}
-                  {viewedReply.estTransmissible !== false && perms.canTransfer && Number(viewedReply.idService) === Number(serviceId) && (
-                    <button className="btn-primary" onClick={openTransferFromView}>{t('transferer')}</button>
-                  )}
-                  <button className="btn-secondary" onClick={() => setShowViewReplyModal(false)}>{t('fermer')}</button>
-                </div>
-              </>
+{showViewReplyModal && viewedReply && (
+  <div className="modal-overlay" onClick={() => setShowViewReplyModal(false)}>
+    <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="registry-panel-header">
+        <h3>{t('reponse')}</h3>
+        <button className="btn-secondary" onClick={() => setShowViewReplyModal(false)}>{t('fermer')}</button>
+      </div>
+      {!editingReply ? (
+        // ---- VIEW MODE ----
+        <>
+          <div className="form-grid">
+            {/* Conditionally show destinataire (for replies) OR source (for answers) */}
+            {viewedReply.typeRegistre === 'Morasalat' ? (
+              <div className="form-field">
+                <label>{t('destinataire')}</label>
+                <input className="form-input" value={getSourceLabel(viewedReply.destinataire)} disabled />
+              </div>
             ) : (
-              <>
-                <div className="form-grid">
-                  <div className="form-field"><label>{t('source')}</label><input className="form-input" value={editReplyForm.source} onChange={e => setEditReplyForm({ ...editReplyForm, source: e.target.value })} /></div>
-                  {viewedReply.destinataire !== undefined && <div className="form-field"><label>{t('destinataire')}</label><input className="form-input" value={editReplyForm.destinataire} onChange={e => setEditReplyForm({ ...editReplyForm, destinataire: e.target.value })} /></div>}
-                  <div className="form-field"><label>{t('sujet')}</label><input className="form-input" value={editReplyForm.sujet} onChange={e => setEditReplyForm({ ...editReplyForm, sujet: e.target.value })} /></div>
-                  <div className="form-field"><label>{t('date')}</label><input className="form-input" type="date" value={editReplyForm.date} onChange={e => setEditReplyForm({ ...editReplyForm, date: e.target.value })} /></div>
-                  <div className="form-field full-width"><label>{t('description')}</label><textarea className="form-input" value={editReplyForm.description} onChange={e => setEditReplyForm({ ...editReplyForm, description: e.target.value })} rows="4" /></div>
-                </div>
-                <div className="form-actions">
-                  <button className="btn-primary" onClick={saveEditedReply}>{t('save')}</button>
-                  <button className="btn-secondary" onClick={cancelEditingReply}>{t('annuler')}</button>
-                </div>
-              </>
+              <div className="form-field">
+                <label>{t('source')}</label>
+                <input className="form-input" value={getSourceLabel(viewedReply.source)} disabled />
+              </div>
             )}
+            <div className="form-field">
+              <label>{t('sujet')}</label>
+              <input className="form-input" value={viewedReply.sujet || ''} disabled />
+            </div>
+            <div className="form-field">
+              <label>{t('date')}</label>
+              <input className="form-input" value={formatDate(viewedReply.date)} disabled />
+            </div>
+            {viewedReply.lienPdf && (
+              <div className="form-field full-width">
+                <label>{t('document_pdf_word')}</label>
+                <a href={getDocumentHref(viewedReply.lienPdf)} target="_blank" rel="noreferrer" className="btn-secondary">{t('ouvrir')}</a>
+              </div>
+            )}
+            <div className="form-field full-width">
+              <label>{t('description')}</label>
+              <textarea className="form-input" value={viewedReply.description || ''} disabled rows="4" />
+            </div>
           </div>
-        </div>
+          <div className="form-actions">
+            {(perms.canCreateAdministratif || perms.canCreateJuridique) && (
+              <button className="btn-primary" onClick={startEditingReply}>{t('modifier')}</button>
+            )}
+            {viewedReply.estTransmissible !== false && perms.canTransfer && Number(viewedReply.idService) === Number(serviceId) && (
+              <button className="btn-primary" onClick={openTransferFromView}>{t('transferer')}</button>
+            )}
+            <button className="btn-secondary" onClick={() => setShowViewReplyModal(false)}>{t('fermer')}</button>
+          </div>
+        </>
+      ) : (
+        // ---- EDIT MODE ----
+        <>
+          <div className="form-grid">
+            {/* In edit mode, we allow editing the appropriate field */}
+            {viewedReply.typeRegistre === 'Morasalat' ? (
+              <div className="form-field">
+                <label>{t('destinataire')}</label>
+                <SearchableSelect
+                  name="destinataire"
+                  value={editReplyForm.destinataire}
+                  onChange={(e) => setEditReplyForm({ ...editReplyForm, destinataire: e.target.value })}
+                  options={sourceOpts}
+                  placeholder={t('choisir')}
+                />
+              </div>
+            ) : (
+              <div className="form-field">
+                <label>{t('source')}</label>
+                <SearchableSelect
+                  name="source"
+                  value={editReplyForm.source}
+                  onChange={(e) => setEditReplyForm({ ...editReplyForm, source: e.target.value })}
+                  options={sourceOpts}
+                  placeholder={t('choisir')}
+                />
+              </div>
+            )}
+            <div className="form-field">
+              <label>{t('sujet')}</label>
+              <input className="form-input" value={editReplyForm.sujet} onChange={e => setEditReplyForm({ ...editReplyForm, sujet: e.target.value })} />
+            </div>
+            <div className="form-field">
+              <label>{t('date')}</label>
+              <input className="form-input" type="date" value={editReplyForm.date} onChange={e => setEditReplyForm({ ...editReplyForm, date: e.target.value })} />
+            </div>
+            <div className="form-field full-width">
+              <label>{t('description')}</label>
+              <textarea className="form-input" value={editReplyForm.description} onChange={e => setEditReplyForm({ ...editReplyForm, description: e.target.value })} rows="4" />
+            </div>
+          </div>
+          <div className="form-actions">
+            <button className="btn-primary" onClick={saveEditedReply}>{t('save')}</button>
+            <button className="btn-secondary" onClick={cancelEditingReply}>{t('annuler')}</button>
+          </div>
+        </>
       )}
-
+    </div>
+  </div>
+)}
       {/* Transaction History Modal */}
       {showHistoryModal && (
         <div className="modal-overlay" onClick={() => setShowHistoryModal(false)}>
@@ -1935,5 +2057,6 @@ function getErrorMessage(err, fb) {
   if (err?.message) return err.message;
   return fb;
 }
+
 
 export default GestionCourriers;

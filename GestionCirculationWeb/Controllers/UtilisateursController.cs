@@ -120,32 +120,52 @@ namespace GestionCourrier.Controllers
             return Ok();
         }
 
-        [HttpGet("export/excel")]
-        public async Task<IActionResult> ExportExcel()
+[HttpGet("export/excel")]
+public async Task<IActionResult> ExportExcel()
+{
+    var users = await _context.Utilisateurs.Include(u => u.Service).ToListAsync();
+    using var workbook = new XLWorkbook();
+    var ws = workbook.Worksheets.Add("المستخدمين");
+    ws.RightToLeft = true;
+
+    // Headers in Arabic (without ID and Service ID)
+    var headers = new[] { "الاسم الكامل", "اسم الدخول", "الخدمة" };
+
+    // Style header row
+    for (int i = 0; i < headers.Length; i++)
+    {
+        var cell = ws.Cell(1, i + 1);
+        cell.Value = headers[i];
+        cell.Style.Font.Bold = true;
+        cell.Style.Font.FontColor = XLColor.White;
+        cell.Style.Fill.BackgroundColor = XLColor.FromArgb(68, 68, 68);
+        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        cell.Style.Border.OutsideBorderColor = XLColor.Black;
+    }
+    ws.Row(1).Height = 30;
+
+    int row = 2;
+    foreach (var u in users)
+    {
+        ws.Cell(row, 1).Value = u.NomComplet;
+        ws.Cell(row, 2).Value = u.Login;
+        ws.Cell(row, 3).Value = u.Service?.NomService ?? "";
+        
+        // Alternate row shading
+        if (row % 2 == 0)
         {
-            var users = await _context.Utilisateurs.Include(u => u.Service).ToListAsync();
-            using var workbook = new XLWorkbook();
-            var ws = workbook.Worksheets.Add("Utilisateurs");
-            ws.Cell(1, 1).Value = "ID";
-            ws.Cell(1, 2).Value = "Nom complet";
-            ws.Cell(1, 3).Value = "Login";
-            ws.Cell(1, 4).Value = "Service ID";
-            ws.Cell(1, 5).Value = "Service";
-            int row = 2;
-            foreach (var u in users)
-            {
-                ws.Cell(row, 1).Value = u.Id;
-                ws.Cell(row, 2).Value = u.NomComplet;
-                ws.Cell(row, 3).Value = u.Login;
-                ws.Cell(row, 4).Value = u.IdService;
-                ws.Cell(row, 5).Value = u.Service?.NomService;
-                row++;
-            }
-            ws.Columns().AdjustToContents();
-            using var stream = new MemoryStream();
-            workbook.SaveAs(stream);
-            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "utilisateurs.xlsx");
+            var rowRange = ws.Range(row, 1, row, headers.Length);
+            rowRange.Style.Fill.BackgroundColor = XLColor.FromArgb(240, 240, 240);
         }
+        row++;
+    }
+    ws.Columns().AdjustToContents();
+    using var stream = new MemoryStream();
+    workbook.SaveAs(stream);
+    return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "utilisateurs.xlsx");
+}
 
         [HttpPost("import/preview")]
         public async Task<IActionResult> ImportPreview(IFormFile file)

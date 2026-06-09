@@ -70,30 +70,52 @@ namespace GestionCourrier.Controllers
             return Ok();
         }
 
-        [HttpGet("export/excel")]
-        public async Task<IActionResult> ExportExcel()
+[HttpGet("export/excel")]
+public async Task<IActionResult> ExportExcel()
+{
+    var services = await _context.Services.ToListAsync();
+    using var workbook = new XLWorkbook();
+    var ws = workbook.Worksheets.Add("الخدمات");
+    ws.RightToLeft = true;
+
+    // Headers in Arabic (without ID)
+    var headers = new[] { "الاسم", "الوصف", "الطابق" };
+
+    // Style header row
+    for (int i = 0; i < headers.Length; i++)
+    {
+        var cell = ws.Cell(1, i + 1);
+        cell.Value = headers[i];
+        cell.Style.Font.Bold = true;
+        cell.Style.Font.FontColor = XLColor.White;
+        cell.Style.Fill.BackgroundColor = XLColor.FromArgb(68, 68, 68);
+        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        cell.Style.Border.OutsideBorderColor = XLColor.Black;
+    }
+    ws.Row(1).Height = 30;
+
+    int row = 2;
+    foreach (var s in services)
+    {
+        ws.Cell(row, 1).Value = s.NomService;
+        ws.Cell(row, 2).Value = s.Description ?? "";
+        ws.Cell(row, 3).Value = s.Etage ?? "";
+
+        // Alternate row shading
+        if (row % 2 == 0)
         {
-            var services = await _context.Services.ToListAsync();
-            using var workbook = new XLWorkbook();
-            var ws = workbook.Worksheets.Add("Services");
-            ws.Cell(1, 1).Value = "ID";
-            ws.Cell(1, 2).Value = "Nom";
-            ws.Cell(1, 3).Value = "Description";
-            ws.Cell(1, 4).Value = "Étage";
-            int row = 2;
-            foreach (var s in services)
-            {
-                ws.Cell(row, 1).Value = s.IdService;
-                ws.Cell(row, 2).Value = s.NomService;
-                ws.Cell(row, 3).Value = s.Description;
-                ws.Cell(row, 4).Value = s.Etage;
-                row++;
-            }
-            ws.Columns().AdjustToContents();
-            using var stream = new MemoryStream();
-            workbook.SaveAs(stream);
-            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "services.xlsx");
+            var rowRange = ws.Range(row, 1, row, headers.Length);
+            rowRange.Style.Fill.BackgroundColor = XLColor.FromArgb(240, 240, 240);
         }
+        row++;
+    }
+    ws.Columns().AdjustToContents();
+    using var stream = new MemoryStream();
+    workbook.SaveAs(stream);
+    return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "services.xlsx");
+}
 
         [HttpPost("import/preview")]
         public async Task<IActionResult> ImportPreview(IFormFile file)
