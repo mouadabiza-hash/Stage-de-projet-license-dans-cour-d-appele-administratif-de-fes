@@ -535,7 +535,10 @@
 "etatArchive": "État ",
 "motifDeRetrait": "Motif retrait",
 "effectuePar": "Effectué par",
-"dateDeRetour": "Date de retour"
+"dateDeRetour": "Date de retour",
+"mes_notifications": "Mes notifications",
+"notifications_substitution": "Notifications (substitution)",
+"aucune_notification_substitution": "Aucune notification de substitution"
 
 
 

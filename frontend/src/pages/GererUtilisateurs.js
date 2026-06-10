@@ -196,7 +196,7 @@ function GererUtilisateurs() {
     };
 
     return (
-        <div className="page-container" dir="rtl">
+        <div className="page-container" >
             <h1 className="page-title">{t('gerer_utilisateurs')}</h1>
             {error && <div className="error-message">{error}</div>}
             <div className="filters">

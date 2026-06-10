@@ -553,7 +553,10 @@
 "etatArchive": "الحالة",
 "motifDeRetrait": "سبب السحب",
 "effectuePar": "تم بواسطة",
-"dateDeRetour": "تاريخ الإرجاع"
+"dateDeRetour": "تاريخ الإرجاع",
+"mes_notifications": "إشعاراتي",
+"notifications_substitution": "إشعارات النيابة",
+"aucune_notification_substitution": "لا توجد إشعارات نيابة"
 }
 
 

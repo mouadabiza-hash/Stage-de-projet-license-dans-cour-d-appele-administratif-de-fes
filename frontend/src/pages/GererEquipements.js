@@ -52,8 +52,6 @@ function GererEquipements() {
           axios.get('/api/ListItems?listName=EquipmentType'),
           axios.get('/api/ListItems?listName=EquipmentEtat')
         ]);
-        console.log('EquipmentTypes:', typesRes.data);
-        console.log('EquipmentEtats:', etatsRes.data);
         setEquipmentTypes(typesRes.data.sort((a, b) => a.displayOrder - b.displayOrder));
         setEquipmentEtats(etatsRes.data.sort((a, b) => a.displayOrder - b.displayOrder));
       } catch (err) {
@@ -209,18 +207,19 @@ function GererEquipements() {
   };
 
   const getTypeLabel = (code) => {
-    const item = equipmentTypes.find(t => String(t.code) === String(code));
+    const item = equipmentTypes.find(t => t.code == code);
     if (!item) return code;
     return locale === 'ar' ? item.valueAr : item.valueFr;
   };
+
   const getEtatLabel = (code) => {
-    const item = equipmentEtats.find(e => String(e.code) === String(code));
+    const item = equipmentEtats.find(e => e.code == code);
     if (!item) return code;
-    return locale === 'ar' ? e.valueAr : e.valueFr;
+    return locale === 'ar' ? item.valueAr : item.valueFr;
   };
 
   return (
-    <div className="page-container" dir="rtl">
+    <div className="page-container">
       <h1 className="page-title">{t('gerer_equipements')}</h1>
       {error && <div className="error-message">{error}</div>}
       <div className="filters">
@@ -358,11 +357,11 @@ function GererEquipements() {
           <thead>
             <tr>
               <th><input type="checkbox" checked={selectAll} onChange={handleSelectAll} /></th>
-              <th>ID</th>
+              <th>{t('id')}</th>
               <th>{t('serie')}</th>
               <th>{t('type')}</th>
               <th>{t('etat')}</th>
-              <th>{t('service_id')}</th>
+              <th>{t('service')}</th>
               <th>{t('charge')}</th>
               <th>{t('date_decharge')}</th>
               <th>{t('actions')}</th>
@@ -376,16 +375,16 @@ function GererEquipements() {
                 <td>{eq.serial}</td>
                 <td>{getTypeLabel(eq.type)}</td>
                 <td>{getEtatLabel(eq.etat)}</td>
-                <td>{eq.serviceNom} (ID: {eq.idService})</td>
+                <td>{eq.serviceNom || `${t('service')} ${eq.idService}`}</td>
                 <td className={eq.estCharge ? 'status-charge' : 'status-decharge'}>{eq.estCharge ? t('charge') : t('decharge')}</td>
-                <td>{eq.dateDechargement ? new Date(eq.dateDechargement).toLocaleString() : '—'}</td>
+                <td>{eq.dateDechargement ? new Date(eq.dateDechargement).toLocaleString(locale) : '—'}</td>
                 <td className="action-icons">
-                  <button onClick={() => handleEdit(eq)}>✏️</button>
-                  {!eq.estCharge && <button onClick={() => handleCharger(eq.id)} style={{ color: 'green' }}>{t('charger')}</button>}
-                  {eq.estCharge && <button onClick={() => handleDecharger(eq.id)} style={{ color: 'orange' }}>{t('decharger')}</button>}
-                  <button onClick={() => handleDelete(eq.id)}>🗑️</button>
-                 </td>
-               </tr>
+                  <button onClick={() => handleEdit(eq)} title={t('modifier')}>✏️</button>
+                  {!eq.estCharge && <button onClick={() => handleCharger(eq.id)} style={{ color: 'green' }} title={t('charger')}>{t('charger')}</button>}
+                  {eq.estCharge && <button onClick={() => handleDecharger(eq.id)} style={{ color: 'orange' }} title={t('decharger')}>{t('decharger')}</button>}
+                  <button onClick={() => handleDelete(eq.id)} title={t('supprimer')}>🗑️</button>
+                </td>
+              </tr>
             ))}
           </tbody>
         </table>

@@ -8,7 +8,6 @@ function TransactionsOutgoing() {
   const { user } = useAuth();
   const locale = i18n.resolvedLanguage?.startsWith('ar') ? 'ar-MA' : 'fr-FR';
   const isAdmin = user?.role === 'Admin';
-  const isGreffier = user?.role === 'Greffier';  // ✅ pour afficher la colonne
 
   const [transactions, setTransactions] = useState([]);
   const [filteredTransactions, setFilteredTransactions] = useState([]);
@@ -66,6 +65,7 @@ function TransactionsOutgoing() {
           axios.get('/api/transactions/incoming-accepted', { params: { year: selectedYear || undefined, month: selectedMonth || undefined } })
         ]);
         data = [...outgoingRes.data, ...incomingRes.data];
+        // Remove duplicates (if any)
         data = data.filter((tx, idx, self) => self.findIndex(t => t.id === tx.id) === idx);
       } else if (viewMode === 'byService' && isAdmin && selectedServiceId) {
         const res = await axios.get('/api/transactions/by-service-all', {
@@ -73,6 +73,14 @@ function TransactionsOutgoing() {
         });
         data = res.data;
       }
+
+      // Sort by date: for accepted transactions use acceptedDate, otherwise use dateEnvoi
+      data.sort((a, b) => {
+        const timeA = a.acceptedDate ? new Date(a.acceptedDate).getTime() : new Date(a.dateEnvoi).getTime();
+        const timeB = b.acceptedDate ? new Date(b.acceptedDate).getTime() : new Date(b.dateEnvoi).getTime();
+        return timeB - timeA;
+      });
+
       setTransactions(data);
       setFilteredTransactions(data);
       setSelectedIds([]);
@@ -175,7 +183,10 @@ function TransactionsOutgoing() {
           <div className="rows-per-page">
             <span>{t('afficher')}</span>
             <select value={rowsPerPage} onChange={e => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
-              <option value={5}>5</option><option value={10}>10</option><option value={15}>15</option><option value={20}>20</option>
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={15}>15</option>
+              <option value={20}>20</option>
             </select>
             <span>{t('lignes')}</span>
           </div>
@@ -190,8 +201,7 @@ function TransactionsOutgoing() {
                 <input type="checkbox" checked={selectAll} onChange={handleSelectAll} />
               </th>
               <th>{t('document')}</th>
-              {/* ✅ Colonne "رقم المراسلة" visible uniquement pour Greffier */}
-              {isGreffier && <th>{t('numero_courrier')}</th>}
+              {user?.role === 'Greffier' && <th>{t('numero_courrier')}</th>}
               <th>{t('numero_dossier_judiciaire')}</th>
               {viewMode === 'byService' && <th>{t('service_source')}</th>}
               <th>{t('service_destinataire')}</th>
@@ -203,9 +213,9 @@ function TransactionsOutgoing() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={viewMode === 'byService' ? (isGreffier ? 10 : 9) : (isGreffier ? 9 : 8)} className="loading">{t('chargement')}</td></tr>
+              <tr><td colSpan={viewMode === 'byService' ? (user?.role === 'Greffier' ? 10 : 9) : (user?.role === 'Greffier' ? 9 : 8)} className="loading">{t('chargement')}</td></tr>
             ) : currentTransactions.length === 0 ? (
-              <tr><td colSpan={viewMode === 'byService' ? (isGreffier ? 10 : 9) : (isGreffier ? 9 : 8)} className="text-muted">{t('aucune_transaction_acceptee')}</td></tr>
+              <tr><td colSpan={viewMode === 'byService' ? (user?.role === 'Greffier' ? 10 : 9) : (user?.role === 'Greffier' ? 9 : 8)} className="text-muted">{t('aucune_transaction_acceptee')}</td></tr>
             ) : (
               currentTransactions.map(tx => (
                 <tr key={tx.id}>
@@ -213,7 +223,7 @@ function TransactionsOutgoing() {
                     <input type="checkbox" checked={selectedIds.includes(tx.id)} onChange={() => handleSelectOne(tx.id)} />
                   </td>
                   <td>{tx.documentSujet}</td>
-                  {isGreffier && <td>{tx.numeroCourrier || '-'}</td>}
+                  {user?.role === 'Greffier' && <td>{tx.numeroCourrier || '-'}</td>}
                   <td>{tx.numeroDossierJudiciaire || '-'}</td>
                   {viewMode === 'byService' && <td className="source-service">{tx.sourceServiceNom || '-'}</td>}
                   <td className="dest-service">{tx.destinationServiceNom}</td>

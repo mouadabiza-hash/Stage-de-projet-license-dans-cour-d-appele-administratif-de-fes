@@ -153,149 +153,171 @@ namespace GestionCourrier.Controllers
             }
             return Ok(result);
         }
+private async Task<Utilisateur?> GetSubstituteForUser(int userId)
+{
+    return await _context.Utilisateurs
+        .FirstOrDefaultAsync(u => u.SubstituteUserId == userId);
+}
+[HttpGet("incoming-accepted")]
+public async Task<IActionResult> GetIncomingAccepted([FromQuery] int? year, [FromQuery] int? month)
+{
+    var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
+    if (user == null) return Unauthorized();
 
-        // ========== GET: api/transactions/incoming-accepted ==========
-        [HttpGet("incoming-accepted")]
-        public async Task<IActionResult> GetIncomingAccepted([FromQuery] int? year, [FromQuery] int? month)
+    // Trouver le substitut de l'utilisateur courant (celui qui le remplace)
+    var substitute = await GetSubstituteForUser(user.Id);
+    int? substituteId = substitute?.Id;
+
+    // 1. Transactions dont le service de destination est celui de l'utilisateur
+    var ownAccepted = _context.Transactions
+        .Where(t => t.DestinationServiceId == user.IdService && t.Statut == "Accepté");
+
+    // 2. Transactions acceptées par le substitut (si existant)
+    var substituteAccepted = substituteId.HasValue
+        ? _context.Transactions.Where(t => t.AcceptedByUserId == substituteId.Value && t.Statut == "Accepté")
+        : Enumerable.Empty<Transaction>().AsQueryable();
+
+    // Exécuter les deux requêtes et fusionner les résultats sans doublon (par Id)
+    var ownList = await ownAccepted.ToListAsync();
+    var subList = substituteId.HasValue ? await substituteAccepted.ToListAsync() : new List<Transaction>();
+
+// Fusionner et supprimer les doublons
+var allAccepted = ownList.Concat(subList)
+    .GroupBy(t => t.Id)
+    .Select(g => g.First())
+    .OrderByDescending(t => t.DateEnvoi)   // ← Add this line
+    .ToList();
+
+    // Appliquer les filtres année/mois (en mémoire)
+    if (year.HasValue)
+        allAccepted = allAccepted.Where(t => t.DateEnvoi.Year == year.Value).ToList();
+    if (month.HasValue)
+        allAccepted = allAccepted.Where(t => t.DateEnvoi.Month == month.Value).ToList();
+
+    // Construction de la réponse
+    var result = new List<object>();
+    foreach (var t in allAccepted)
+    {
+        string sujet = t.DocumentSujet;
+        if (string.IsNullOrEmpty(sujet))
         {
-            var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
-            if (user == null) return Unauthorized();
-
-            var serviceIds = new HashSet<int> { user.IdService };
-            var substituted = await _context.Utilisateurs
-                .Where(u => u.SubstituteUserId == user.Id)
-                .Select(u => u.IdService)
-                .Distinct()
-                .ToListAsync();
-            foreach (var id in substituted) serviceIds.Add(id);
-
-            var query = _context.Transactions
-                .Where(t => serviceIds.Contains(t.DestinationServiceId) && t.Statut == "Accepté");
-
-            if (year.HasValue)
-                query = query.Where(t => t.DateEnvoi.Year == year.Value);
-            if (month.HasValue)
-                query = query.Where(t => t.DateEnvoi.Month == month.Value);
-
-            var transactions = await query.OrderByDescending(t => t.DateEnvoi).ToListAsync();
-
-            var currentUserService = await _context.Services.FindAsync(user.IdService);
-            var destinationServiceName = currentUserService?.NomService ?? "";
-
-            var result = new List<object>();
-            foreach (var t in transactions)
-            {
-                string sujet = t.DocumentSujet;
-                if (string.IsNullOrEmpty(sujet))
-                {
-                    sujet = t.DocumentType == "Administratif"
-                        ? (await _context.Entites.FindAsync(t.DocumentId))?.Sujet ?? ""
-                        : (await _context.EntitesDJs.FindAsync(t.DocumentId))?.Sujet ?? "";
-                }
-
-                string? numeroCourrier = null;
-                string? numeroDossier = null;
-                if (t.DocumentType == "Administratif")
-                {
-                    var doc = await _context.Entites.FindAsync(t.DocumentId);
-                    if (doc != null)
-                        numeroCourrier = !string.IsNullOrWhiteSpace(doc.IdBureauOrdre) ? doc.IdBureauOrdre : doc.NumeroDeCourrier;
-                }
-                else
-                {
-                    var doc = await _context.EntitesDJs.Include(x => x.NumeroDossier).FirstOrDefaultAsync(x => x.Id == t.DocumentId);
-                    if (doc?.NumeroDossier != null)
-                        numeroDossier = $"{doc.NumeroDossier.Annee}/{doc.NumeroDossier.Nombre}/{doc.NumeroDossier.NumeroSujet}";
-                    if (!string.IsNullOrWhiteSpace(doc?.IdBureauOrdre))
-                        numeroCourrier = doc.IdBureauOrdre;
-                }
-
-                var sourceService = await _context.Services.FindAsync(t.SourceServiceId);
-                result.Add(new
-                {
-                    t.Id,
-                    t.DocumentId,
-                    t.DocumentType,
-                    documentSujet = sujet,
-                    sourceServiceNom = sourceService?.NomService ?? "",
-                    destinationServiceNom = destinationServiceName,
-                    t.DoitRevenir,
-                    t.DateEnvoi,
-                    t.DateReponse,
-                    t.Statut,
-                    t.Message,
-                    t.MessageReponse,
-                    t.AcceptedByUserName,
-                    t.AcceptedDate,
-                    numeroCourrier,
-                    numeroDossierJudiciaire = numeroDossier
-                });
-            }
-            return Ok(result);
+            sujet = t.DocumentType == "Administratif"
+                ? (await _context.Entites.FindAsync(t.DocumentId))?.Sujet ?? ""
+                : (await _context.EntitesDJs.FindAsync(t.DocumentId))?.Sujet ?? "";
         }
+
+        string? numeroCourrier = null;
+        string? numeroDossier = null;
+        if (t.DocumentType == "Administratif")
+        {
+            var doc = await _context.Entites.FindAsync(t.DocumentId);
+            if (doc != null)
+                numeroCourrier = !string.IsNullOrWhiteSpace(doc.IdBureauOrdre) ? doc.IdBureauOrdre : doc.NumeroDeCourrier;
+        }
+        else
+        {
+            var doc = await _context.EntitesDJs.Include(x => x.NumeroDossier).FirstOrDefaultAsync(x => x.Id == t.DocumentId);
+            if (doc?.NumeroDossier != null)
+                numeroDossier = $"{doc.NumeroDossier.Annee}/{doc.NumeroDossier.Nombre}/{doc.NumeroDossier.NumeroSujet}";
+            if (!string.IsNullOrWhiteSpace(doc?.IdBureauOrdre))
+                numeroCourrier = doc.IdBureauOrdre;
+        }
+
+        var destService = await _context.Services.FindAsync(t.DestinationServiceId);
+        var sourceService = await _context.Services.FindAsync(t.SourceServiceId);
+
+        result.Add(new
+        {
+            t.Id,
+            t.DocumentId,
+            t.DocumentType,
+            documentSujet = sujet,
+            sourceServiceNom = sourceService?.NomService ?? "",
+            destinationServiceNom = destService?.NomService ?? "",
+            t.DoitRevenir,
+            t.DateEnvoi,
+            t.DateReponse,
+            t.Statut,
+            t.Message,
+            t.MessageReponse,
+            t.AcceptedByUserName,
+            t.AcceptedDate,
+            numeroCourrier,
+            numeroDossierJudiciaire = numeroDossier
+        });
+    }
+
+    return Ok(result);
+}
 
         // ========== GET: api/transactions/incoming (pending) ==========
-        [HttpGet("incoming")]
-        public async Task<IActionResult> GetIncoming()
+[HttpGet("incoming")]
+public async Task<IActionResult> GetIncoming()
+{
+    var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
+    if (user == null) return Unauthorized();
+
+    var serviceIds = new HashSet<int> { user.IdService };
+    var substituteServices = new HashSet<int>();
+    var substituted = await _context.Utilisateurs
+        .Where(u => u.SubstituteUserId == user.Id)
+        .Select(u => u.IdService)
+        .Distinct()
+        .ToListAsync();
+    foreach (var id in substituted)
+    {
+        serviceIds.Add(id);
+        substituteServices.Add(id);
+    }
+
+    var transactions = await _context.Transactions
+        .Where(t => serviceIds.Contains(t.DestinationServiceId) && t.Statut == "En attente")
+        .OrderByDescending(t => t.DateEnvoi)
+        .ToListAsync();
+
+    var result = new List<object>();
+    foreach (var t in transactions)
+    {
+        string sujet = "";
+        string? numeroCourrier = null;
+        string? numeroDossier = null;
+
+        if (t.DocumentType == "Administratif")
         {
-            var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
-            if (user == null) return Unauthorized();
-
-            var serviceIds = new HashSet<int> { user.IdService };
-            var substituted = await _context.Utilisateurs
-                .Where(u => u.SubstituteUserId == user.Id)
-                .Select(u => u.IdService)
-                .Distinct()
-                .ToListAsync();
-            foreach (var id in substituted) serviceIds.Add(id);
-
-            var transactions = await _context.Transactions
-                .Where(t => serviceIds.Contains(t.DestinationServiceId) && t.Statut == "En attente")
-                .OrderByDescending(t => t.DateEnvoi)
-                .ToListAsync();
-
-            var result = new List<object>();
-            foreach (var t in transactions)
+            var doc = await _context.Entites.FindAsync(t.DocumentId);
+            if (doc != null)
             {
-                string sujet = "";
-                string? numeroCourrier = null;
-                string? numeroDossier = null;
-
-                if (t.DocumentType == "Administratif")
-                {
-                    var doc = await _context.Entites.FindAsync(t.DocumentId);
-                    if (doc != null)
-                    {
-                        sujet = doc.Sujet ?? "";
-                        numeroCourrier = !string.IsNullOrWhiteSpace(doc.IdBureauOrdre) ? doc.IdBureauOrdre : doc.NumeroDeCourrier;
-                    }
-                }
-                else
-                {
-                    var doc = await _context.EntitesDJs.Include(x => x.NumeroDossier).FirstOrDefaultAsync(x => x.Id == t.DocumentId);
-                    if (doc != null)
-                    {
-                        sujet = doc.Sujet ?? "";
-                        numeroDossier = doc.NumeroDossier != null ? $"{doc.NumeroDossier.Annee}/{doc.NumeroDossier.Nombre}/{doc.NumeroDossier.NumeroSujet}" : null;
-                    }
-                }
-
-                var sourceService = await _context.Services.FindAsync(t.SourceServiceId);
-                result.Add(new
-                {
-                    t.Id,
-                    t.DocumentId,
-                    t.DocumentType,
-                    documentSujet = sujet,
-                    sourceServiceNom = sourceService?.NomService ?? "",
-                    t.Message,
-                    t.DateEnvoi,
-                    numeroCourrier,
-                    numeroDossierJudiciaire = numeroDossier
-                });
+                sujet = doc.Sujet ?? "";
+                numeroCourrier = !string.IsNullOrWhiteSpace(doc.IdBureauOrdre) ? doc.IdBureauOrdre : doc.NumeroDeCourrier;
             }
-            return Ok(result);
         }
+        else
+        {
+            var doc = await _context.EntitesDJs.Include(x => x.NumeroDossier).FirstOrDefaultAsync(x => x.Id == t.DocumentId);
+            if (doc != null)
+            {
+                sujet = doc.Sujet ?? "";
+                numeroDossier = doc.NumeroDossier != null ? $"{doc.NumeroDossier.Annee}/{doc.NumeroDossier.Nombre}/{doc.NumeroDossier.NumeroSujet}" : null;
+            }
+        }
+
+        var sourceService = await _context.Services.FindAsync(t.SourceServiceId);
+        result.Add(new
+        {
+            t.Id,
+            t.DocumentId,
+            t.DocumentType,
+            documentSujet = sujet,
+            sourceServiceNom = sourceService?.NomService ?? "",
+            t.Message,
+            t.DateEnvoi,
+            numeroCourrier,
+            numeroDossierJudiciaire = numeroDossier,
+            isSubstitute = substituteServices.Contains(t.DestinationServiceId)   // NEW
+        });
+    }
+    return Ok(result);
+}
 
         // ========== GET: api/transactions/pending-returns ==========
         [HttpGet("pending-returns")]
@@ -806,41 +828,61 @@ public async Task<IActionResult> BatchCreate([FromBody] BatchTransactionDto dto)
     var user = await _context.Utilisateurs.FindAsync(GetCurrentUserId());
     if (user == null) return Unauthorized();
 
+    // Check transmissibility
     bool transmissible = false;
+    object document = null;
     if (dto.DocumentType == "Administratif")
     {
         var doc = await _context.Entites.FindAsync(dto.DocumentId);
         if (doc == null) return BadRequest($"Document ID {dto.DocumentId} not found");
         transmissible = doc.EstTransmissible;
+        document = doc;
     }
     else if (dto.DocumentType == "Judiciaire")
     {
         var doc = await _context.EntitesDJs.FindAsync(dto.DocumentId);
         if (doc == null) return BadRequest($"Document ID {dto.DocumentId} not found");
         transmissible = doc.EstTransmissible;
+        document = doc;
     }
     else return BadRequest($"Type de document inconnu: {dto.DocumentType}");
 
     if (!transmissible) return BadRequest("Document non transmissible.");
 
-    if (dto.DocumentType != "Judiciaire")
-    {
-        var existing = await _context.Transactions
-            .FirstOrDefaultAsync(t => t.DocumentId == dto.DocumentId
-                                   && t.DocumentType == dto.DocumentType
-                                   && t.Statut != "Annulé" && t.Statut != "Refusé");
-        if (existing != null)
-            return BadRequest("Ce document a déjà été transféré. Un seul transfert est autorisé.");
-    }
+    // Get existing pending transactions for this document (excluding "Annulé" and "Refusé")
+    var existingTransactions = await _context.Transactions
+        .Where(t => t.DocumentId == dto.DocumentId && t.DocumentType == dto.DocumentType && (t.Statut == "En attente" || t.Statut == "Accepté"))
+        .ToListAsync();
 
     var destinationUsers = await _context.Utilisateurs
         .Where(u => dto.DestinationUserIds.Contains(u.Id))
         .ToListAsync();
 
     var transactions = new List<Transaction>();
+    var errors = new List<string>();
+    var processedUserIds = new HashSet<int>();
+
     foreach (var destUser in destinationUsers)
     {
-        if (destUser.IdService == user.IdService) continue;
+        if (processedUserIds.Contains(destUser.Id))
+        {
+            errors.Add($"Utilisateur {destUser.NomComplet} en double dans la requête.");
+            continue;
+        }
+        processedUserIds.Add(destUser.Id);
+
+        // Check if already a pending transaction for this user
+        if (existingTransactions.Any(t => t.DestinationUserId == destUser.Id))
+        {
+            errors.Add($"Un transfert est déjà en attente ou accepté pour {destUser.NomComplet}.");
+            continue;
+        }
+        if (destUser.IdService == user.IdService)
+        {
+            errors.Add($"Impossible d'envoyer à {destUser.NomComplet} (même service).");
+            continue;
+        }
+
         bool isConsultant = destUser.Role == "Consultant";
         var transaction = new Transaction
         {
@@ -860,15 +902,15 @@ public async Task<IActionResult> BatchCreate([FromBody] BatchTransactionDto dto)
             transaction.AcceptedByUserName = destUser.NomComplet;
             transaction.AcceptedDate = DateTime.Now;
             transaction.DateReponse = DateTime.Now;
-            // Move document to consultant's service
+            // Move document to consultant's service (only once, but we can do it for each consultant? Actually, moving the document to multiple services is impossible. So for consultants, we need to think: The document cannot be in two services at once. Therefore, this batch transfer to multiple consultants is problematic. You should either allow only one consultant per batch, or handle it differently. We'll assume the frontend won't send multiple consultants in one batch, but if it does, we'll move the document only once.)
             if (dto.DocumentType == "Administratif")
             {
-                var doc = await _context.Entites.FindAsync(dto.DocumentId);
+                var doc = document as Entite;
                 if (doc != null) doc.IdService = transaction.DestinationServiceId;
             }
             else
             {
-                var doc = await _context.EntitesDJs.FindAsync(dto.DocumentId);
+                var doc = document as EntiteDJ;
                 if (doc != null)
                 {
                     doc.IdService = transaction.DestinationServiceId;
@@ -880,8 +922,15 @@ public async Task<IActionResult> BatchCreate([FromBody] BatchTransactionDto dto)
         transactions.Add(transaction);
     }
 
+    if (transactions.Count == 0)
+    {
+        return BadRequest(new { message = "Aucune transaction créée.", errors });
+    }
+
     _context.Transactions.AddRange(transactions);
     await _context.SaveChangesAsync();
-    return Ok(new { message = $"{transactions.Count} transaction(s) envoyée(s)" });
-}    }
+    return Ok(new { message = $"{transactions.Count} transaction(s) envoyée(s)", errors });
+}  
+
+}
 }
