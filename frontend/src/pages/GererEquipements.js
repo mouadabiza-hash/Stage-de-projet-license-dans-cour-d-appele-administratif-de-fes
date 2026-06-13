@@ -11,7 +11,7 @@ function GererEquipements() {
 
   const [equipements, setEquipements] = useState([]);
   const [services, setServices] = useState([]);
-  const [form, setForm] = useState({ serial: '', type: '', etat: '', idService: '' });
+  const [form, setForm] = useState({ serial: '', type: '', etat: '', idService: '', additionalInfo: '' });
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -22,26 +22,26 @@ function GererEquipements() {
   const [selectAll, setSelectAll] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [headers, setHeaders] = useState([]);
-  const [mapping, setMapping] = useState({ serie: '', type: '', etat: '', serviceId: '' });
+  const [mapping, setMapping] = useState({ serie: '', type: '', etat: '', serviceId: '', additionalInfo: '' });
   const [showMapping, setShowMapping] = useState(false);
 
   const [equipmentTypes, setEquipmentTypes] = useState([]);
   const [equipmentEtats, setEquipmentEtats] = useState([]);
 
   const typeOptions = useMemo(() => 
-    equipmentTypes.map(t => ({ value: t.code, label: locale === 'ar' ? t.valueAr : t.valueFr })), 
+    equipmentTypes.map(t => ({ value: t.code, label: locale === 'ar' ? t.valueAr : t.valueFr })),
     [equipmentTypes, locale]
   );
   const etatOptions = useMemo(() => 
-    equipmentEtats.map(e => ({ value: e.code, label: locale === 'ar' ? e.valueAr : e.valueFr })), 
+    equipmentEtats.map(e => ({ value: e.code, label: locale === 'ar' ? e.valueAr : e.valueFr })),
     [equipmentEtats, locale]
   );
   const serviceOptions = useMemo(() => 
-    services.map(s => ({ value: String(s.idService), label: s.nomService })), 
+    services.map(s => ({ value: String(s.idService), label: s.nomService })),
     [services]
   );
   const headerOptions = useMemo(() => 
-    headers.map(h => ({ value: h, label: h })), 
+    headers.map(h => ({ value: h, label: h })),
     [headers]
   );
 
@@ -88,15 +88,20 @@ function GererEquipements() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const serialNum = parseInt(form.serial, 10);
     const typeNum = parseInt(form.type, 10);
     const etatNum = parseInt(form.etat, 10);
     const serviceId = parseInt(form.idService, 10);
-    if (isNaN(serialNum) || isNaN(typeNum) || isNaN(etatNum) || isNaN(serviceId)) {
+    if (!form.serial.trim() || isNaN(typeNum) || isNaN(etatNum) || isNaN(serviceId)) {
       setError(t('erreur_champs'));
       return;
     }
-    const payload = { serial: serialNum, type: typeNum, etat: etatNum, idService: serviceId };
+    const payload = {
+      serial: form.serial.trim(),
+      type: typeNum,
+      etat: etatNum,
+      idService: serviceId,
+      additionalInfo: form.additionalInfo || null
+    };
     if (editingId) payload.id = editingId;
     try {
       if (editingId) {
@@ -113,7 +118,13 @@ function GererEquipements() {
 
   const handleEdit = (eq) => {
     setEditingId(eq.id);
-    setForm({ serial: eq.serial, type: String(eq.type), etat: String(eq.etat), idService: String(eq.idService) });
+    setForm({
+      serial: eq.serial,
+      type: String(eq.type),
+      etat: String(eq.etat),
+      idService: String(eq.idService),
+      additionalInfo: eq.additionalInfo || ''
+    });
   };
   const handleDelete = async (id) => {
     if (window.confirm(t('confirmation_supprimer'))) {
@@ -131,7 +142,7 @@ function GererEquipements() {
   };
   const resetForm = () => {
     setEditingId(null);
-    setForm({ serial: '', type: '', etat: '', idService: '' });
+    setForm({ serial: '', type: '', etat: '', idService: '', additionalInfo: '' });
     setError('');
   };
 
@@ -176,6 +187,7 @@ function GererEquipements() {
       colEtat: mapping.etat,
       colServiceId: mapping.serviceId
     });
+    if (mapping.additionalInfo) params.append('colAdditionalInfo', mapping.additionalInfo);
     try {
       const res = await axios.post(`/api/equipements/import/execute?${params.toString()}`, formData);
       const data = res.data;
@@ -190,7 +202,7 @@ function GererEquipements() {
       }
       setShowMapping(false);
       setImportFile(null);
-      setMapping({ serie: '', type: '', etat: '', serviceId: '' });
+      setMapping({ serie: '', type: '', etat: '', serviceId: '', additionalInfo: '' });
     } catch (err) {
       console.error(err);
       const errorMsg = err.response?.data || t('erreur_import');
@@ -211,7 +223,6 @@ function GererEquipements() {
     if (!item) return code;
     return locale === 'ar' ? item.valueAr : item.valueFr;
   };
-
   const getEtatLabel = (code) => {
     const item = equipmentEtats.find(e => e.code == code);
     if (!item) return code;
@@ -265,6 +276,16 @@ function GererEquipements() {
                 placeholder={`-- ${t('choisir')} --`}
               />
             </div>
+           <div className="form-field">
+              <label>{t('colonne_infos_sup')} ({t('optionnel')})</label>
+              <SearchableSelect
+                name="additionalInfo"
+                value={mapping.additionalInfo}
+                onChange={e => setMapping({ ...mapping, additionalInfo: e.target.value })}
+                options={headerOptions}
+                placeholder={`-- ${t('choisir')} --`}
+              />
+            </div>
             <div className="form-field">
               <label>{t('colonne_type')} *</label>
               <SearchableSelect
@@ -295,6 +316,7 @@ function GererEquipements() {
                 placeholder={`-- ${t('choisir')} --`}
               />
             </div>
+
           </div>
           <div className="form-actions">
             <button className="btn-primary" onClick={executeImport}>{t('importer')}</button>
@@ -309,7 +331,11 @@ function GererEquipements() {
           <div className="form-grid">
             <div className="form-field">
               <label>{t('serie')} *</label>
-              <input type="number" value={form.serial} onChange={e => setForm({ ...form, serial: e.target.value })} required className="form-input" />
+              <input type="text" value={form.serial} onChange={e => setForm({ ...form, serial: e.target.value })} required className="form-input" />
+            </div>
+           <div className="form-field">
+              <label>{t('informations_supplementaires')}</label>
+              <input type="text" value={form.additionalInfo} onChange={e => setForm({ ...form, additionalInfo: e.target.value })} className="form-input" />
             </div>
             <div className="form-field">
               <label>{t('type')} *</label>
@@ -344,6 +370,7 @@ function GererEquipements() {
                 required
               />
             </div>
+
           </div>
           <div className="form-actions">
             <button type="submit" className="btn-primary">{editingId ? t('modifier') : t('ajouter')}</button>
@@ -359,6 +386,7 @@ function GererEquipements() {
               <th><input type="checkbox" checked={selectAll} onChange={handleSelectAll} /></th>
               <th>{t('id')}</th>
               <th>{t('serie')}</th>
+              <th>{t('informations_supplementaires')}</th>
               <th>{t('type')}</th>
               <th>{t('etat')}</th>
               <th>{t('service')}</th>
@@ -373,6 +401,7 @@ function GererEquipements() {
                 <td><input type="checkbox" checked={selectedIds.includes(eq.id)} onChange={() => handleSelectOne(eq.id)} /></td>
                 <td>{eq.id}</td>
                 <td>{eq.serial}</td>
+                <td>{eq.additionalInfo || '—'}</td>
                 <td>{getTypeLabel(eq.type)}</td>
                 <td>{getEtatLabel(eq.etat)}</td>
                 <td>{eq.serviceNom || `${t('service')} ${eq.idService}`}</td>

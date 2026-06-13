@@ -19,6 +19,8 @@ namespace GestionCourrier.Models
         public DbSet<Reponse> Reponses { get; set; }
         public DbSet<Equipment> Equipements { get; set; }
         public DbSet<Utilisateur> Utilisateurs { get; set; }
+
+        public DbSet<SubstitutionHistory> SubstitutionHistories { get; set; }
         public DbSet<Id> Ids { get; set; }
         public DbSet<ListItem> ListItems { get; set; }
 
@@ -119,7 +121,18 @@ namespace GestionCourrier.Models
                 .Property(e => e.TypeGenerale)
                 .HasConversion<int>();
            
-            // Substitutions – prevent multiple cascade paths
+           // SubstitutionHistory relationships
+            modelBuilder.Entity<SubstitutionHistory>()
+                .HasOne(sh => sh.User)
+                .WithMany()
+                .HasForeignKey(sh => sh.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<SubstitutionHistory>()
+                .HasOne(sh => sh.SubstituteUser)
+                .WithMany()
+                .HasForeignKey(sh => sh.SubstituteUserId)
+                .OnDelete(DeleteBehavior.Restrict);
           }
     }
 }

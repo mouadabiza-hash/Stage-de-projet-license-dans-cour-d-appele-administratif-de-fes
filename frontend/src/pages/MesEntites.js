@@ -21,11 +21,9 @@ function MesEntites() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectAllOwn, setSelectAllOwn] = useState(false);
   const [selectAllSub, setSelectAllSub] = useState(false);
-
-  // Hidden documents modal
   const [showHiddenModal, setShowHiddenModal] = useState(false);
 
-  // Transfer state (full)
+  // Transfer states
   const [showTransferChoice, setShowTransferChoice] = useState(false);
   const [transferChoiceDoc, setTransferChoiceDoc] = useState(null);
   const [showTransferModal, setShowTransferModal] = useState(false);
@@ -51,7 +49,7 @@ function MesEntites() {
   const [formMode, setFormMode] = useState('file');
   const [editOnlyNumeroDossier, setEditOnlyNumeroDossier] = useState(false);
   const [formData, setFormData] = useState({
-    numeroDossier: '', tribunalSource: '', sujet: '', date: new Date().toISOString().slice(0,10),
+    numeroDossier: '', tribunalSource: '', sujet: '', date: new Date().toISOString().slice(0, 10),
     description: '', lienPdf: '', numeroPremiereInstance: '', etat: 'Nouveau',
     parentJudiciaireId: '', typeJudiciaire: '', linkedDocumentType: '', linkedDocumentSource: ''
   });
@@ -89,7 +87,7 @@ function MesEntites() {
   const linkedDocSourceOpts = useMemo(() => 
     linkedDocSourceOptions.map(ls => ({ value: ls.code, label: locale === 'ar' ? ls.valueAr : ls.valueFr })), [linkedDocSourceOptions, locale]);
 
-  // Fetch lists (including the new LinkedDocumentSource)
+  // Fetch lists
   useEffect(() => {
     const fetchLists = async () => {
       try {
@@ -100,11 +98,11 @@ function MesEntites() {
           axios.get('/api/ListItems?listName=LinkedDocumentType'),
           axios.get('/api/ListItems?listName=LinkedDocumentSource')
         ]);
-        setDocumentStates(statesRes.data.sort((a,b)=>a.displayOrder-b.displayOrder));
-        setTribunalTypes(tribunalRes.data.sort((a,b)=>a.displayOrder-b.displayOrder));
-        setJudicialTypes(judicialRes.data.sort((a,b)=>a.displayOrder-b.displayOrder));
-        setLinkedDocTypes(linkedDocRes.data.sort((a,b)=>a.displayOrder-b.displayOrder));
-        setLinkedDocSourceOptions(linkedDocSourceRes.data.sort((a,b)=>a.displayOrder-b.displayOrder));
+        setDocumentStates(statesRes.data.sort((a, b) => a.displayOrder - b.displayOrder));
+        setTribunalTypes(tribunalRes.data.sort((a, b) => a.displayOrder - b.displayOrder));
+        setJudicialTypes(judicialRes.data.sort((a, b) => a.displayOrder - b.displayOrder));
+        setLinkedDocTypes(linkedDocRes.data.sort((a, b) => a.displayOrder - b.displayOrder));
+        setLinkedDocSourceOptions(linkedDocSourceRes.data.sort((a, b) => a.displayOrder - b.displayOrder));
       } catch (err) { console.error(err); setError(t('erreur_chargement_donnees')); }
     };
     fetchLists();
@@ -162,7 +160,6 @@ function MesEntites() {
     catch { setError(t('erreur_chargement_parents')); }
   };
 
-  // ---------- Hide / Restore ----------
   const handleHide = (doc) => {
     const key = `${doc.idEntite}_${doc.type || doc.Type}`;
     setHiddenIds([...hiddenIds, key]);
@@ -201,15 +198,17 @@ function MesEntites() {
     } catch { setError(t('erreur_archivage')); }
   };
 
-  // ---------- Add / Edit modal ----------
   const openAddModal = () => {
     setEditingDoc(null);
     const isProcedures = user?.role === 'Procedures';
-    const defaultMode = isProcedures ? 'linked' : 'file';
+    const isEnregistrement = user?.role === 'Enregistrement';
+    let defaultMode = 'file';
+    if (isProcedures) defaultMode = 'linked';
+    if (isEnregistrement) defaultMode = 'file';
     setFormMode(defaultMode);
     setEditOnlyNumeroDossier(false);
     setFormData({
-      numeroDossier: '', tribunalSource: '', sujet: '', date: new Date().toISOString().slice(0,10),
+      numeroDossier: '', tribunalSource: '', sujet: '', date: new Date().toISOString().slice(0, 10),
       description: '', lienPdf: '', numeroPremiereInstance: '', etat: 'Nouveau',
       parentJudiciaireId: '', typeJudiciaire: '', linkedDocumentType: '', linkedDocumentSource: ''
     });
@@ -233,7 +232,7 @@ function MesEntites() {
       numeroDossier: doc.numeroDossierJudiciaire || '',
       tribunalSource: doc.source || '',
       sujet: doc.sujet || '',
-      date: doc.dateCreation ? doc.dateCreation.slice(0,10) : new Date().toISOString().slice(0,10),
+      date: doc.dateCreation ? doc.dateCreation.slice(0, 10) : new Date().toISOString().slice(0, 10),
       description: doc.description || '',
       lienPdf: doc.lienPdf || '',
       numeroPremiereInstance: doc.numeroPremiereInstance || '',
@@ -253,10 +252,6 @@ function MesEntites() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSelectChange = (name, selected) => {
-    setFormData(prev => ({ ...prev, [name]: selected?.value || '' }));
-  };
-
   const handleFormUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -271,75 +266,91 @@ function MesEntites() {
     finally { setUploadingFile(false); e.target.value = ''; }
   };
 
-  const submitForm = async () => {
-    setFormError('');
-
-    if (editOnlyNumeroDossier && editingDoc) {
-      if (!formData.numeroDossier) {
-        setFormError(t('numero_dossier_obligatoire') || 'رقم الاستئنافي مطلوب');
-        return;
-      }
-      // Construire l'objet complet du document à partir des données existantes + nouveau numéro
-      const fullPayload = {
-        idBureauOrdre: editingDoc.idBureauOrdre || null,
-        date: editingDoc.dateArchivage || editingDoc.date || new Date().toISOString(),
-        tribunalSource: editingDoc.tribunalSource || editingDoc.source || '',
-        sujet: editingDoc.sujet || '',
-        description: editingDoc.description || '',
-        etatArchive: editingDoc.etatArchive || editingDoc.etat || 'Nouveau',
-        lienPdf: editingDoc.lienPdf || '',
-        idService: editingDoc.idService,
-        estTransmissible: editingDoc.estTransmissible !== undefined ? editingDoc.estTransmissible : true,
-        numeroPremiereInstance: editingDoc.numeroPremiereInstance || null,
-        estDocumentLie: editingDoc.estDocumentLie || false,
-        parentJudiciaireId: editingDoc.parentJudiciaireId || null,
-        destinataire: editingDoc.destinataire || 'محكمة الاستئناف',
-        numeroDossier: formData.numeroDossier,  // ← nouvelle valeur
-        typeJudiciaire: editingDoc.typeJudiciaire || null,
-        linkedDocumentType: editingDoc.linkedDocumentType || null,
-        linkedDocumentSource: editingDoc.linkedDocumentSource || null,
-      };
-      try {
-        await axios.put(`/api/acteursjudiciaires/${editingDoc.idEntite}`, fullPayload);
-        setFormSuccess(t('modification_succes'));
-        setTimeout(() => { setShowFormModal(false); fetchDocuments(); }, 1500);
-      } catch (err) {
-        setFormError(getErrorMessage(err, t('erreur_enregistrement')));
-      }
+const submitForm = async () => {
+  setFormError('');
+  
+  // Case: editing only the numero dossier (Enregistrement role)
+  if (editOnlyNumeroDossier && editingDoc) {
+    if (!formData.numeroDossier) {
+      setFormError(t('numero_dossier_obligatoire') || 'رقم الاستئنافي مطلوب');
       return;
     }
-    
-    if (!formData.sujet || !formData.date) { setFormError(t('champs_obligatoires')); return; }
-    if (formMode === 'file' && !formData.tribunalSource) { setFormError(t('tribunal_source_requis')); return; }
-    if (formMode === 'linked' && !formData.parentJudiciaireId) { setFormError(t('parent_requis')); return; }
-
-    const payload = {
-      date: new Date(formData.date).toISOString(),
-      tribunalSource: formMode === 'file' ? formData.tribunalSource : '',
-      sujet: formData.sujet,
-      direction: 'Entrant',
-      description: formData.description,
-      etatArchive: formData.etat,
-      lienPdf: formData.lienPdf,
-      idService: serviceId,
-      estTransmissible: true,
-      numeroPremiereInstance: formData.numeroPremiereInstance || null,
-      estDocumentLie: formMode === 'linked',
-      parentJudiciaireId: formMode === 'linked' ? Number(formData.parentJudiciaireId) : null,
-      destinataire: 'محكمة الاستئناف',
-      numeroDossier: formMode === 'file' ? formData.numeroDossier : null,
-      typeJudiciaire: formMode === 'file' ? formData.typeJudiciaire : null,
-      linkedDocumentType: formMode === 'linked' ? formData.linkedDocumentType : null,
-      linkedDocumentSource: formMode === 'linked' ? formData.linkedDocumentSource : null
+    // Build full payload using existing document data + new numeroDossier
+    const fullPayload = {
+      idBureauOrdre: editingDoc.idBureauOrdre || null,
+      date: editingDoc.dateArchivage || editingDoc.date || new Date().toISOString(),
+      tribunalSource: editingDoc.tribunalSource || editingDoc.source || '',
+      sujet: editingDoc.sujet || '',
+      description: editingDoc.description || '',
+      etatArchive: editingDoc.etatArchive || editingDoc.etat || 'Nouveau',
+      lienPdf: editingDoc.lienPdf || '',
+      idService: editingDoc.idService,
+      estTransmissible: editingDoc.estTransmissible !== undefined ? editingDoc.estTransmissible : true,
+      numeroPremiereInstance: editingDoc.numeroPremiereInstance || null,
+      estDocumentLie: editingDoc.estDocumentLie || false,
+      parentJudiciaireId: editingDoc.parentJudiciaireId || null,
+      destinataire: editingDoc.destinataire || 'محكمة الاستئناف',
+      numeroDossier: formData.numeroDossier,  // new value
+      typeJudiciaire: editingDoc.typeJudiciaire || null,
+      linkedDocumentType: editingDoc.linkedDocumentType || null,
+      linkedDocumentSource: editingDoc.linkedDocumentSource || null,
     };
-
     try {
-      if (editingDoc) await axios.put(`/api/acteursjudiciaires/${editingDoc.idEntite}`, payload);
-      else await axios.post('/api/acteursjudiciaires', payload);
-      setFormSuccess(editingDoc ? t('modification_succes') : t('ajout_succes'));
+      await axios.put(`/api/acteursjudiciaires/${editingDoc.idEntite}`, fullPayload);
+      setFormSuccess(t('modification_succes'));
       setTimeout(() => { setShowFormModal(false); fetchDocuments(); }, 1500);
-    } catch (err) { setFormError(getErrorMessage(err, t('erreur_enregistrement'))); }
+    } catch (err) {
+      setFormError(getErrorMessage(err, t('erreur_enregistrement')));
+    }
+    return;
+  }
+  
+  // Normal add / edit (full document)
+  if (!formData.sujet || !formData.date) {
+    setFormError(t('champs_obligatoires'));
+    return;
+  }
+  if (formMode === 'file' && !formData.tribunalSource) {
+    setFormError(t('tribunal_source_requis'));
+    return;
+  }
+  if (formMode === 'linked' && !formData.parentJudiciaireId) {
+    setFormError(t('parent_requis'));
+    return;
+  }
+
+  const payload = {
+    date: new Date(formData.date).toISOString(),
+    tribunalSource: formMode === 'file' ? formData.tribunalSource : '',
+    sujet: formData.sujet,
+    direction: 'Entrant',
+    description: formData.description,
+    etatArchive: formData.etat,
+    lienPdf: formData.lienPdf,
+    idService: serviceId,
+    estTransmissible: true,
+    numeroPremiereInstance: formData.numeroPremiereInstance || null,
+    estDocumentLie: formMode === 'linked',
+    parentJudiciaireId: formMode === 'linked' ? Number(formData.parentJudiciaireId) : null,
+    destinataire: 'محكمة الاستئناف',
+    numeroDossier: formMode === 'file' ? formData.numeroDossier : null,
+    typeJudiciaire: formMode === 'file' ? formData.typeJudiciaire : null,
+    linkedDocumentType: formMode === 'linked' ? formData.linkedDocumentType : null,
+    linkedDocumentSource: formMode === 'linked' ? formData.linkedDocumentSource : null,
   };
+
+  try {
+    if (editingDoc) {
+      await axios.put(`/api/acteursjudiciaires/${editingDoc.idEntite}`, payload);
+    } else {
+      await axios.post('/api/acteursjudiciaires', payload);
+    }
+    setFormSuccess(editingDoc ? t('modification_succes') : t('ajout_succes'));
+    setTimeout(() => { setShowFormModal(false); fetchDocuments(); }, 1500);
+  } catch (err) {
+    setFormError(getErrorMessage(err, t('erreur_enregistrement')));
+  }
+};
 
   // Selection helpers for bulk archive
   const handleSelectAll = (docs, setSelectAllFn, selectAllState) => {
@@ -373,7 +384,7 @@ function MesEntites() {
     fetchDocuments();
   };
 
-  // ---------- Transfer functions (full) ----------
+  // Transfer functions
   const openTransferModal = (doc) => {
     setTransferTarget(doc);
     setBulkTransferDocs([]);
@@ -515,11 +526,10 @@ function MesEntites() {
   };
   const closeModal = () => { setIsModalOpen(false); setModalDocument(null); };
 
-  // Helper to determine transfer button visibility (using hasTransaction)
   const shouldShowTransferButton = (doc) => {
     if (!doc.estTransmissible) return false;
     const isJudicialMain = doc.type === 'Judiciaire' && !doc.estDocumentLie;
-    if (isJudicialMain) return true; // always show for main judicial files
+    if (isJudicialMain) return true;
     return !doc.hasTransaction;
   };
 
@@ -583,7 +593,6 @@ function MesEntites() {
                 const canArchive = perms.canArchive && isJudicial && !isLinked;
                 const showTransfer = shouldShowTransferButton(doc);
                 const canTransfer = showTransfer && perms.canTransfer;
-                const showHide = (!doc.estTransmissible || doc.hasTransaction);
                 const showEdit = isJudicial && perms.canCreateJuridique && user?.role !== 'Procedures';
                 const isEnregistrement = user?.role === 'Enregistrement';
                 return (
@@ -592,7 +601,7 @@ function MesEntites() {
                     <td>{doc.sujet || '-'}</td>
                     <td>{doc.numeroDossierJudiciaire || '-'}</td>
                     <td>{isJudicial ? (isLinked ? t('judiciaire_linked') : t('judiciaire_file')) : (doc.type || '-')}</td>
-                    <td>{doc.dateCreation ? new Date(doc.dateCreation).toLocaleDateString('ar-MA') : '-'}</td>
+                    <td>{doc.dateCreation ? new Date(doc.dateCreation).toLocaleDateString(locale) : '-'}</td>
                     <td>{doc.source || '-'}</td>
                     <td>{doc.destinataire || '-'}</td>
                     <td className="action-icons">
@@ -684,11 +693,24 @@ function MesEntites() {
                       </div>
                       <div className="form-field">
                         <label>{t('type_judiciaire') || 'نوع الملف'}</label>
-                        <SearchableSelect name="typeJudiciaire" value={formData.typeJudiciaire} onChange={e=>handleSelectChange('typeJudiciaire', e.target.value)} options={judicialTypeOptions} placeholder={t('choisir_ou_ecrire')} />
+                        <SearchableSelect
+                          name="typeJudiciaire"
+                          value={formData.typeJudiciaire}
+                          onChange={handleFormChange}
+                          options={judicialTypeOptions}
+                          placeholder={t('choisir_ou_ecrire')}
+                        />
                       </div>
                       <div className="form-field">
                         <label>{t('tribunal_source')} *</label>
-                        <SearchableSelect name="tribunalSource" value={formData.tribunalSource} onChange={e=>handleSelectChange('tribunalSource', e.target.value)} options={tribunalOptions} placeholder={t('choisir_ou_ecrire')} required />
+                        <SearchableSelect
+                          name="tribunalSource"
+                          value={formData.tribunalSource}
+                          onChange={handleFormChange}
+                          options={tribunalOptions}
+                          placeholder={t('choisir_ou_ecrire')}
+                          required
+                        />
                       </div>
                       <div className="form-field">
                         <label>{t('numero_premiere_instance') || 'الرقم الابتدائي'}</label>
@@ -707,17 +729,36 @@ function MesEntites() {
                       </div>
                       <div className="form-field">
                         <label>{t('linked_document_source') || 'مصدر الوثيقة'} *</label>
-                        <SearchableSelect name="linkedDocumentSource" value={formData.linkedDocumentSource} onChange={e=>handleSelectChange('linkedDocumentSource', e.target.value)} options={linkedDocSourceOpts} placeholder={t('choisir_ou_ecrire')} required />
+                        <SearchableSelect
+                          name="linkedDocumentSource"
+                          value={formData.linkedDocumentSource}
+                          onChange={handleFormChange}
+                          options={linkedDocSourceOpts}
+                          placeholder={t('choisir_ou_ecrire')}
+                          required
+                        />
                       </div>
                       <div className="form-field">
                         <label>{t('linked_document_type') || 'نوع الوثيقة'}</label>
-                        <SearchableSelect name="linkedDocumentType" value={formData.linkedDocumentType} onChange={e=>handleSelectChange('linkedDocumentType', e.target.value)} options={linkedDocOptions} placeholder={t('choisir_ou_ecrire')} />
+                        <SearchableSelect
+                          name="linkedDocumentType"
+                          value={formData.linkedDocumentType}
+                          onChange={handleFormChange}
+                          options={linkedDocOptions}
+                          placeholder={t('choisir_ou_ecrire')}
+                        />
                       </div>
                     </>
                   )}
                   <div className="form-field"><label>{t('date')} *</label><input type="date" name="date" value={formData.date} onChange={handleFormChange} required className="form-input" /></div>
                   <div className="form-field"><label>{t('objet')} *</label><input type="text" name="sujet" value={formData.sujet} onChange={handleFormChange} required className="form-input" /></div>
-                  <div className="form-field"><label>{t('etat')}</label><SearchableSelect name="etat" value={formData.etat} onChange={e=>handleSelectChange('etat', e.target.value)} options={etatOptions} placeholder={t('choisir_ou_ecrire')} /></div>
+                  <div className="form-field"><label>{t('etat')}</label><SearchableSelect
+                      name="etat"
+                      value={formData.etat}
+                      onChange={handleFormChange}
+                      options={etatOptions}
+                      placeholder={t('choisir_ou_ecrire')}
+                    /></div>
                   <div className="form-field full-width"><label>{t('document_pdf_word')}</label><div className="document-control"><label className="document-upload-button">{uploadingFile ? t('uploading') : t('choisir_fichier')}<input type="file" accept=".pdf,.doc,.docx" onChange={handleFormUpload} /></label><div className={formData.lienPdf ? "document-link-preview filled" : "document-link-preview"}><span>{formData.lienPdf ? getDocumentName(formData.lienPdf) : t('aucun_fichier')}</span>{formData.lienPdf && <a href={getDocumentHref(formData.lienPdf)} target="_blank" rel="noreferrer">{t('ouvrir')}</a>}</div></div></div>
                   <div className="form-field full-width"><label>{t('notes')}</label><textarea name="description" value={formData.description} onChange={handleFormChange} rows="3" className="form-input" /></div>
                 </>

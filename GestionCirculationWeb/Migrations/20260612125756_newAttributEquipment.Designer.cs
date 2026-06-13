@@ -4,6 +4,7 @@ using GestionCourrier.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GestionCirculationWeb.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260612125756_newAttributEquipment")]
+    partial class newAttributEquipment
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -388,35 +391,6 @@ namespace GestionCirculationWeb.Migrations
                     b.ToTable("Services");
                 });
 
-            modelBuilder.Entity("GestionCourrier.Models.SubstitutionHistory", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("DateAssigned")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DateRemoved")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("SubstituteUserId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SubstituteUserId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("SubstitutionHistories");
-                });
-
             modelBuilder.Entity("GestionCourrier.Models.Transaction", b =>
                 {
                     b.Property<int>("Id")
@@ -649,25 +623,6 @@ namespace GestionCirculationWeb.Migrations
                         .IsRequired();
 
                     b.Navigation("EntiteDJ");
-                });
-
-            modelBuilder.Entity("GestionCourrier.Models.SubstitutionHistory", b =>
-                {
-                    b.HasOne("GestionCourrier.Models.Utilisateur", "SubstituteUser")
-                        .WithMany()
-                        .HasForeignKey("SubstituteUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("GestionCourrier.Models.Utilisateur", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("SubstituteUser");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("GestionCourrier.Models.Transaction", b =>

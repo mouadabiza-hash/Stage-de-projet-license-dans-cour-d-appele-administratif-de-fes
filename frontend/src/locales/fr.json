@@ -538,7 +538,19 @@
 "dateDeRetour": "Date de retour",
 "mes_notifications": "Mes notifications",
 "notifications_substitution": "Notifications (substitution)",
-"aucune_notification_substitution": "Aucune notification de substitution"
+"aucune_notification_substitution": "Aucune notification de substitution",
+"informations_supplementaires" : "code",
+"colonne_infos_sup":"code",
+"substitution_history": "Historique des substitutions",
+"date_assigned": "Date d'assignation",
+"date_removed": "Date de révocation",
+"status": "Statut",
+"active": "Actif",
+"inactive": "Inactif",
+"no_substitution_history": "Aucun historique de substitution",
+"confirm_delete_history": "Supprimer cette entrée de l'historique ?",
+"history_deleted": "Entrée supprimée",
+"refresh": "Actualiser"
 
 
 

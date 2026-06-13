@@ -30,6 +30,7 @@ namespace GestionCourrier.Models
         // ----- NEW: substitute -----
         public int? SubstituteUserId { get; set; }
 
+
         [ForeignKey("SubstituteUserId")]
         public Utilisateur? SubstituteUser { get; set; }
 

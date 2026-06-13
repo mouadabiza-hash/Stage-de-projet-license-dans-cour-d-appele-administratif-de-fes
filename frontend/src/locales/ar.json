@@ -556,7 +556,19 @@
 "dateDeRetour": "تاريخ الإرجاع",
 "mes_notifications": "إشعاراتي",
 "notifications_substitution": "إشعارات النيابة",
-"aucune_notification_substitution": "لا توجد إشعارات نيابة"
+"aucune_notification_substitution": "لا توجد إشعارات نيابة",
+"informations_supplementaires":"رقم",
+"colonne_infos_sup":"رقم",
+"substitution_history": "سجل الاستبدال",
+"date_assigned": "تاريخ التعيين",
+"date_removed": "تاريخ الإلغاء",
+"status": "الحالة",
+"active": "نشط",
+"inactive": "غير نشط",
+"no_substitution_history": "لا يوجد سجل استبدال",
+"confirm_delete_history": "هل تريد حذف هذا السجل؟",
+"history_deleted": "تم حذف السجل",
+"refresh": "تحديث"
 }
 
 

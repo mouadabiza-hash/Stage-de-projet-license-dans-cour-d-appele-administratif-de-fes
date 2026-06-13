@@ -1,5 +1,5 @@
 using ClosedXML.Excel;
-using GestionCourrier.DTOs;   // ← ADD THIS
+using GestionCourrier.DTOs;
 using GestionCourrier.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,7 +24,7 @@ namespace GestionCourrier.Controllers
         {
             var query = _context.Equipements.Include(e => e.Service).AsQueryable();
             if (!string.IsNullOrWhiteSpace(search))
-                query = query.Where(e => e.Serial.ToString().Contains(search) || (e.Service != null && e.Service.NomService.Contains(search)));
+                query = query.Where(e => e.Serial.Contains(search) || (e.Service != null && e.Service.NomService.Contains(search)));
             if (type.HasValue) query = query.Where(e => e.Type == type.Value);
             if (etat.HasValue) query = query.Where(e => e.Etat == etat.Value);
             if (decharge == true) query = query.Where(e => !e.EstCharge);
@@ -38,7 +38,8 @@ namespace GestionCourrier.Controllers
                 e.IdService,
                 e.EstCharge,
                 e.DateDechargement,
-                ServiceNom = e.Service?.NomService
+                ServiceNom = e.Service?.NomService,
+                e.AdditionalInfo
             }));
         }
 
@@ -54,7 +55,8 @@ namespace GestionCourrier.Controllers
                 Etat = dto.Etat,
                 IdService = dto.IdService,
                 EstCharge = true,
-                DateDechargement = null
+                DateDechargement = null,
+                AdditionalInfo = dto.AdditionalInfo
             };
             _context.Equipements.Add(equip);
             await _context.SaveChangesAsync();
@@ -70,6 +72,7 @@ namespace GestionCourrier.Controllers
             equip.Type = dto.Type;
             equip.Etat = dto.Etat;
             equip.IdService = dto.IdService;
+            equip.AdditionalInfo = dto.AdditionalInfo;
             await _context.SaveChangesAsync();
             return Ok();
         }
@@ -106,85 +109,81 @@ namespace GestionCourrier.Controllers
             return Ok();
         }
 
- [HttpGet("export/excel")]
-public async Task<IActionResult> ExportExcel()
-{
-    var equipements = await _context.Equipements.Include(e => e.Service).ToListAsync();
-
-    // Load list items for type and etat
-    var typeItems = await _context.ListItems.Where(l => l.ListName == "EquipmentType").ToListAsync();
-    var etatItems = await _context.ListItems.Where(l => l.ListName == "EquipmentEtat").ToListAsync();
-
-    // Determine language from Accept-Language header
-    var lang = Request.Headers["Accept-Language"].ToString().StartsWith("ar") ? "ar" : "fr";
-
-    string GetTypeLabel(int code)
-    {
-        var item = typeItems.FirstOrDefault(t => t.Code == code.ToString());
-        if (item == null) return code.ToString();
-        return lang == "ar" ? item.ValueAr : item.ValueFr;
-    }
-
-    string GetEtatLabel(int code)
-    {
-        var item = etatItems.FirstOrDefault(e => e.Code == code.ToString());
-        if (item == null) return code.ToString();
-        return lang == "ar" ? item.ValueAr : item.ValueFr;
-    }
-
-    using var workbook = new XLWorkbook();
-    var ws = workbook.Worksheets.Add("المعدات");
-    ws.RightToLeft = true;
-
-    // Headers (Arabic) – removed ID and Service ID
-    var headers = new[] 
-    { 
-        "الرقم المسلسل",   // Série
-        "النوع",           // Type
-        "الحالة",          // État
-        "الخدمة",          // Service
-        "مشحون",           // Chargé
-        "تاريخ التفريغ"     // Date de décharge
-    };
-
-    // Style header row
-    for (int i = 0; i < headers.Length; i++)
-    {
-        var cell = ws.Cell(1, i + 1);
-        cell.Value = headers[i];
-        cell.Style.Font.Bold = true;
-        cell.Style.Font.FontColor = XLColor.White;
-        cell.Style.Fill.BackgroundColor = XLColor.FromArgb(68, 68, 68);
-        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-        cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-        cell.Style.Border.OutsideBorderColor = XLColor.Black;
-    }
-    ws.Row(1).Height = 30;
-
-    int row = 2;
-    foreach (var e in equipements)
-    {
-        ws.Cell(row, 1).Value = e.Serial;
-        ws.Cell(row, 2).Value = GetTypeLabel(e.Type);
-        ws.Cell(row, 3).Value = GetEtatLabel(e.Etat);
-        ws.Cell(row, 4).Value = e.Service?.NomService ?? "";
-        ws.Cell(row, 5).Value = e.EstCharge ? "نعم" : "لا";
-        ws.Cell(row, 6).Value = e.DateDechargement?.ToString("yyyy-MM-dd HH:mm") ?? "";
-
-        // Alternate row shading
-        if (row % 2 == 0)
+        [HttpGet("export/excel")]
+        public async Task<IActionResult> ExportExcel()
         {
-            var rowRange = ws.Range(row, 1, row, headers.Length);
-            rowRange.Style.Fill.BackgroundColor = XLColor.FromArgb(240, 240, 240);
+            var equipements = await _context.Equipements.Include(e => e.Service).ToListAsync();
+
+            var typeItems = await _context.ListItems.Where(l => l.ListName == "EquipmentType").ToListAsync();
+            var etatItems = await _context.ListItems.Where(l => l.ListName == "EquipmentEtat").ToListAsync();
+
+            var lang = Request.Headers["Accept-Language"].ToString().StartsWith("ar") ? "ar" : "fr";
+
+            string GetTypeLabel(int code)
+            {
+                var item = typeItems.FirstOrDefault(t => t.Code == code.ToString());
+                return item == null ? code.ToString() : (lang == "ar" ? item.ValueAr : item.ValueFr);
+            }
+
+            string GetEtatLabel(int code)
+            {
+                var item = etatItems.FirstOrDefault(e => e.Code == code.ToString());
+                return item == null ? code.ToString() : (lang == "ar" ? item.ValueAr : item.ValueFr);
+            }
+
+            using var workbook = new XLWorkbook();
+            var ws = workbook.Worksheets.Add("المعدات");
+            ws.RightToLeft = true;
+
+            var headers = new[]
+            {
+                "الرقم المسلسل",
+                "النوع",
+                "الحالة",
+                "الخدمة",
+                "مشحون",
+                "تاريخ التفريغ",
+                "معلومات إضافية"
+            };
+
+            for (int i = 0; i < headers.Length; i++)
+            {
+                var cell = ws.Cell(1, i + 1);
+                cell.Value = headers[i];
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.FontColor = XLColor.White;
+                cell.Style.Fill.BackgroundColor = XLColor.FromArgb(68, 68, 68);
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                cell.Style.Border.OutsideBorderColor = XLColor.Black;
+            }
+            ws.Row(1).Height = 30;
+
+            int row = 2;
+            foreach (var e in equipements)
+            {
+                ws.Cell(row, 1).Value = e.Serial;
+                ws.Cell(row, 2).Value = GetTypeLabel(e.Type);
+                ws.Cell(row, 3).Value = GetEtatLabel(e.Etat);
+                ws.Cell(row, 4).Value = e.Service?.NomService ?? "";
+                ws.Cell(row, 5).Value = e.EstCharge ? "نعم" : "لا";
+                ws.Cell(row, 6).Value = e.DateDechargement?.ToString("yyyy-MM-dd HH:mm") ?? "";
+                ws.Cell(row, 7).Value = e.AdditionalInfo ?? "";
+
+                if (row % 2 == 0)
+                {
+                    var rowRange = ws.Range(row, 1, row, headers.Length);
+                    rowRange.Style.Fill.BackgroundColor = XLColor.FromArgb(240, 240, 240);
+                }
+                row++;
+            }
+            ws.Columns().AdjustToContents();
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "equipements.xlsx");
         }
-        row++;
-    }
-    ws.Columns().AdjustToContents();
-    using var stream = new MemoryStream();
-    workbook.SaveAs(stream);
-    return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "equipements.xlsx");
-}
+
         [HttpPost("import/preview")]
         public async Task<IActionResult> ImportPreview(IFormFile file)
         {
@@ -201,7 +200,8 @@ public async Task<IActionResult> ExportExcel()
             [FromQuery] string colSerie,
             [FromQuery] string colType,
             [FromQuery] string colEtat,
-            [FromQuery] string colServiceId)
+            [FromQuery] string colServiceId,
+            [FromQuery] string? colAdditionalInfo)   // new optional parameter
         {
             if (file == null || file.Length == 0) return BadRequest("Fichier requis.");
             if (string.IsNullOrWhiteSpace(colSerie) || string.IsNullOrWhiteSpace(colType) ||
@@ -217,6 +217,7 @@ public async Task<IActionResult> ExportExcel()
             int idxType = headers.FindIndex(h => h == colType);
             int idxEtat = headers.FindIndex(h => h == colEtat);
             int idxService = headers.FindIndex(h => h == colServiceId);
+            int idxAdditionalInfo = string.IsNullOrWhiteSpace(colAdditionalInfo) ? -1 : headers.FindIndex(h => h == colAdditionalInfo);
             if (idxSerie == -1 || idxType == -1 || idxEtat == -1 || idxService == -1)
                 return BadRequest("Colonne(s) introuvable(s) dans le fichier.");
 
@@ -224,25 +225,34 @@ public async Task<IActionResult> ExportExcel()
             int imported = 0;
             var errors = new List<string>();
             int lineNumber = 2;
-            var seenSerials = new HashSet<int>();
+            var seenSerials = new HashSet<string>();   // change to string
             var services = await _context.Services.ToDictionaryAsync(s => s.NomService, s => s.IdService);
+
             foreach (var row in rows)
             {
                 var serieStr = row.Cell(idxSerie + 1).GetString().Trim();
                 var typeStr = row.Cell(idxType + 1).GetString().Trim();
                 var etatStr = row.Cell(idxEtat + 1).GetString().Trim();
                 var serviceVal = row.Cell(idxService + 1).GetString().Trim();
+                var additionalInfo = idxAdditionalInfo >= 0 ? row.Cell(idxAdditionalInfo + 1).GetString().Trim() : null;
                 var lineErrors = new List<string>();
 
-                if (!int.TryParse(serieStr, out int serie)) lineErrors.Add("Série invalide");
-                else if (seenSerials.Contains(serie)) lineErrors.Add($"Série '{serie}' dupliquée dans le fichier");
-                else if (await _context.Equipements.AnyAsync(e => e.Serial == serie)) lineErrors.Add($"Série '{serie}' existe déjà dans la base");
-                else seenSerials.Add(serie);
+                if (string.IsNullOrWhiteSpace(serieStr))
+                    lineErrors.Add("Série vide");
+                else if (seenSerials.Contains(serieStr))
+                    lineErrors.Add($"Série '{serieStr}' dupliquée dans le fichier");
+                else if (await _context.Equipements.AnyAsync(e => e.Serial == serieStr))
+                    lineErrors.Add($"Série '{serieStr}' existe déjà dans la base");
+                else
+                    seenSerials.Add(serieStr);
 
-                if (!int.TryParse(typeStr, out int type) || type < 1 || type > 4) lineErrors.Add("Type invalide (1..4)");
-                if (!int.TryParse(etatStr, out int etat) || etat < 1 || etat > 4) lineErrors.Add("État invalide (1..4)");
+                if (!int.TryParse(typeStr, out int type) || type < 1 || type > 4)
+                    lineErrors.Add("Type invalide (1..4)");
+                if (!int.TryParse(etatStr, out int etat) || etat < 1 || etat > 4)
+                    lineErrors.Add("État invalide (1..4)");
 
-                if (string.IsNullOrWhiteSpace(serviceVal)) lineErrors.Add("Service obligatoire");
+                if (string.IsNullOrWhiteSpace(serviceVal))
+                    lineErrors.Add("Service obligatoire");
                 else
                 {
                     int serviceId;
@@ -264,12 +274,13 @@ public async Task<IActionResult> ExportExcel()
                 {
                     _context.Equipements.Add(new Equipment
                     {
-                        Serial = serie,
+                        Serial = serieStr,
                         Type = type,
                         Etat = etat,
                         IdService = int.TryParse(serviceVal, out int sid) ? sid : services[serviceVal],
                         EstCharge = true,
-                        DateDechargement = null
+                        DateDechargement = null,
+                        AdditionalInfo = additionalInfo
                     });
                     imported++;
                 }
@@ -284,16 +295,17 @@ public async Task<IActionResult> ExportExcel()
         {
             using var workbook = new XLWorkbook();
             var ws = workbook.Worksheets.Add("Modele");
-            var headers = new[] { "Série", "Type", "État", "Service (ID ou nom)" };
+            var headers = new[] { "Série", "Type", "État", "Service (ID ou nom)", "Informations supplémentaires" };
             for (int i = 0; i < headers.Length; i++)
             {
                 ws.Cell(1, i + 1).Value = headers[i];
                 ws.Cell(1, i + 1).Style.Font.Bold = true;
             }
-            ws.Cell(2, 1).Value = 123456;
+            ws.Cell(2, 1).Value = "ABC123";
             ws.Cell(2, 2).Value = 1;
             ws.Cell(2, 3).Value = 1;
             ws.Cell(2, 4).Value = "خلية المعلوميات";
+            ws.Cell(2, 5).Value = "exemple info";
             using var stream = new MemoryStream();
             workbook.SaveAs(stream);
             return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "modele_import_equipements.xlsx");

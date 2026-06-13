@@ -4,6 +4,7 @@ using GestionCourrier.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace GestionCourrier.Controllers
 {
@@ -17,6 +18,12 @@ namespace GestionCourrier.Controllers
         public UtilisateursController(ApplicationDbContext context)
         {
             _context = context;
+        }
+
+        private int GetCurrentUserId()
+        {
+            var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            return claim != null ? int.Parse(claim) : 0;
         }
 
         // ========== GET ALL ==========
@@ -37,7 +44,7 @@ namespace GestionCourrier.Controllers
                 u.IdService,
                 NomService = u.Service?.NomService,
                 Role = u.Role,
-                SubstituteUserId = u.SubstituteUserId      // ← ADDED
+                SubstituteUserId = u.SubstituteUserId
             }));
         }
 
@@ -55,7 +62,7 @@ namespace GestionCourrier.Controllers
                 user.IdService,
                 NomService = user.Service?.NomService,
                 Role = user.Role,
-                SubstituteUserId = user.SubstituteUserId      // ← ADDED
+                SubstituteUserId = user.SubstituteUserId
             });
         }
 
@@ -75,7 +82,7 @@ namespace GestionCourrier.Controllers
                 Password = hashedPassword,
                 IdService = dto.IdService,
                 Role = dto.Role,
-                SubstituteUserId = dto.SubstituteUserId   // ← ADDED (optional, can be null)
+                SubstituteUserId = dto.SubstituteUserId
             };
             _context.Utilisateurs.Add(user);
             await _context.SaveChangesAsync();
@@ -89,23 +96,48 @@ namespace GestionCourrier.Controllers
             var user = await _context.Utilisateurs.FindAsync(id);
             if (user == null) return NotFound();
 
+            var oldSubstituteId = user.SubstituteUserId;
+
             if (dto.NomComplet != null) user.NomComplet = dto.NomComplet;
             if (dto.Login != null) user.Login = dto.Login;
             if (dto.IdService.HasValue) user.IdService = dto.IdService.Value;
             if (dto.Role != null) user.Role = dto.Role;
+            if (!string.IsNullOrWhiteSpace(dto.Password))
+                user.Password = BCrypt.Net.BCrypt.HashPassword(dto.Password);
 
-            // ----- HANDLE SUBSTITUTE -----
+            // Handle substitute change
             if (dto.SubstituteUserId.HasValue)
                 user.SubstituteUserId = dto.SubstituteUserId.Value;
-            else if (dto.SubstituteUserId == null)   // allow clearing
+            else if (dto.SubstituteUserId == null)
                 user.SubstituteUserId = null;
 
-            if (!string.IsNullOrWhiteSpace(dto.Password))
+            await _context.SaveChangesAsync();
+
+            // Record substitution history if changed
+            if (oldSubstituteId != user.SubstituteUserId)
             {
-                user.Password = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+                // Close current active history record if any
+                var activeHistory = await _context.SubstitutionHistories
+                    .FirstOrDefaultAsync(h => h.UserId == id && h.DateRemoved == null);
+                if (activeHistory != null)
+                    activeHistory.DateRemoved = DateTime.Now;
+
+                // Create new active record if a substitute is assigned
+                if (user.SubstituteUserId.HasValue)
+                {
+                    var newHistory = new SubstitutionHistory
+                    {
+                        UserId = id,
+                        SubstituteUserId = user.SubstituteUserId.Value,
+                        DateAssigned = DateTime.Now,
+                        DateRemoved = null
+                    };
+                    _context.SubstitutionHistories.Add(newHistory);
+                }
+
+                await _context.SaveChangesAsync();
             }
 
-            await _context.SaveChangesAsync();
             return Ok();
         }
 
@@ -120,53 +152,82 @@ namespace GestionCourrier.Controllers
             return Ok();
         }
 
-[HttpGet("export/excel")]
-public async Task<IActionResult> ExportExcel()
-{
-    var users = await _context.Utilisateurs.Include(u => u.Service).ToListAsync();
-    using var workbook = new XLWorkbook();
-    var ws = workbook.Worksheets.Add("المستخدمين");
-    ws.RightToLeft = true;
-
-    // Headers in Arabic (without ID and Service ID)
-    var headers = new[] { "الاسم الكامل", "اسم الدخول", "الخدمة" };
-
-    // Style header row
-    for (int i = 0; i < headers.Length; i++)
-    {
-        var cell = ws.Cell(1, i + 1);
-        cell.Value = headers[i];
-        cell.Style.Font.Bold = true;
-        cell.Style.Font.FontColor = XLColor.White;
-        cell.Style.Fill.BackgroundColor = XLColor.FromArgb(68, 68, 68);
-        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-        cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-        cell.Style.Border.OutsideBorderColor = XLColor.Black;
-    }
-    ws.Row(1).Height = 30;
-
-    int row = 2;
-    foreach (var u in users)
-    {
-        ws.Cell(row, 1).Value = u.NomComplet;
-        ws.Cell(row, 2).Value = u.Login;
-        ws.Cell(row, 3).Value = u.Service?.NomService ?? "";
-        
-        // Alternate row shading
-        if (row % 2 == 0)
+        // ========== SUBSTITUTION HISTORY ==========
+        [HttpGet("substitution-history")]
+        public async Task<IActionResult> GetSubstitutionHistory()
         {
-            var rowRange = ws.Range(row, 1, row, headers.Length);
-            rowRange.Style.Fill.BackgroundColor = XLColor.FromArgb(240, 240, 240);
-        }
-        row++;
-    }
-    ws.Columns().AdjustToContents();
-    using var stream = new MemoryStream();
-    workbook.SaveAs(stream);
-    return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "utilisateurs.xlsx");
-}
+            var userId = GetCurrentUserId();
+            if (userId == 0) return Unauthorized();
 
+            var history = await _context.SubstitutionHistories
+                .Include(h => h.SubstituteUser)
+                .Where(h => h.UserId == userId)
+                .OrderByDescending(h => h.DateAssigned)
+                .Select(h => new
+                {
+                    h.Id,
+                    SubstituteName = h.SubstituteUser != null ? h.SubstituteUser.NomComplet : "",
+                    h.DateAssigned,
+                    h.DateRemoved,
+                    IsActive = h.DateRemoved == null
+                })
+                .ToListAsync();
+
+            return Ok(history);
+        }
+        [HttpDelete("substitution-history/{id}")]
+public async Task<IActionResult> DeleteSubstitutionHistory(int id)
+{
+    var history = await _context.SubstitutionHistories.FindAsync(id);
+    if (history == null) return NotFound();
+    _context.SubstitutionHistories.Remove(history);
+    await _context.SaveChangesAsync();
+    return Ok(new { message = "Historique supprimé" });
+}
+        // ========== EXPORT EXCEL ==========
+        [HttpGet("export/excel")]
+        public async Task<IActionResult> ExportExcel()
+        {
+            var users = await _context.Utilisateurs.Include(u => u.Service).ToListAsync();
+            using var workbook = new XLWorkbook();
+            var ws = workbook.Worksheets.Add("المستخدمين");
+            ws.RightToLeft = true;
+
+            var headers = new[] { "الاسم الكامل", "اسم الدخول", "الخدمة" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                var cell = ws.Cell(1, i + 1);
+                cell.Value = headers[i];
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.FontColor = XLColor.White;
+                cell.Style.Fill.BackgroundColor = XLColor.FromArgb(68, 68, 68);
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                cell.Style.Border.OutsideBorderColor = XLColor.Black;
+            }
+            ws.Row(1).Height = 30;
+
+            int row = 2;
+            foreach (var u in users)
+            {
+                ws.Cell(row, 1).Value = u.NomComplet;
+                ws.Cell(row, 2).Value = u.Login;
+                ws.Cell(row, 3).Value = u.Service?.NomService ?? "";
+                if (row % 2 == 0)
+                {
+                    var rowRange = ws.Range(row, 1, row, headers.Length);
+                    rowRange.Style.Fill.BackgroundColor = XLColor.FromArgb(240, 240, 240);
+                }
+                row++;
+            }
+            ws.Columns().AdjustToContents();
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "utilisateurs.xlsx");
+        }
+
+        // ========== IMPORT PREVIEW ==========
         [HttpPost("import/preview")]
         public async Task<IActionResult> ImportPreview(IFormFile file)
         {
@@ -178,10 +239,11 @@ public async Task<IActionResult> ExportExcel()
             return Ok(headers);
         }
 
+        // ========== IMPORT EXECUTE ==========
         [HttpPost("import/execute")]
-        public async Task<IActionResult> ImportExecute(IFormFile file, 
-            [FromQuery] string colNom, 
-            [FromQuery] string colLogin, 
+        public async Task<IActionResult> ImportExecute(IFormFile file,
+            [FromQuery] string colNom,
+            [FromQuery] string colLogin,
             [FromQuery] string colServiceId)
         {
             if (file == null || file.Length == 0) return BadRequest("Fichier requis.");
@@ -218,6 +280,7 @@ public async Task<IActionResult> ExportExcel()
                 else if (seenLogin.Contains(login)) lineErrors.Add($"Login '{login}' dupliqué dans le fichier");
                 else if (await _context.Utilisateurs.AnyAsync(u => u.Login == login)) lineErrors.Add($"Login '{login}' existe déjà dans la base");
                 else seenLogin.Add(login);
+
                 if (string.IsNullOrWhiteSpace(serviceVal)) lineErrors.Add("Service obligatoire");
 
                 if (lineErrors.Any())
@@ -246,7 +309,6 @@ public async Task<IActionResult> ExportExcel()
                         }
                     }
 
-                    // ---- CORRECTED: use BCrypt instead of SHA256 ----
                     var defaultPassword = "Password123!";
                     var hashedPassword = BCrypt.Net.BCrypt.HashPassword(defaultPassword);
 
@@ -266,6 +328,7 @@ public async Task<IActionResult> ExportExcel()
             return Ok(new { imported, errors });
         }
 
+        // ========== TEMPLATE EXCEL ==========
         [HttpGet("template-excel")]
         public IActionResult GetTemplateExcel()
         {
