@@ -386,7 +386,6 @@
 "colonne_number": "Colonne Numéro",
 "colonne_letter_date": "Colonne Date de la lettre",
 "toutes_annees": "Toutes années",
-"voir_par_service": "Voir par service",
 "transactions_par_service": "Transactions par service",
 "service_source": "Service source",
 "aucune_transaction_service": "Aucune transaction pour ce service",
@@ -406,9 +405,9 @@
 "view_by_service": "Afficher par service",
 "select_service": "Sélectionner un service",
 "mon_service": "Mon service",
-"mes_transactions": "معاملاتي",
-"afficher_par_service": "عرض حسب الخدمة",
-"choisir_service": "اختر خدمة",
+"mes_transactions": "Mes transactions",
+"afficher_par_service": "Afficher par service",
+"choisir_service": "Choisir un service",
 "الرقم الترتيبي": "N° d'ordre",
 "تاريخ الرسالة": "Date lettre",
 "رقمها": "N°",
@@ -491,8 +490,6 @@
 "document_source": "Source du document",
 "ajouter_document_judiciaire": "Ajouter un document judiciaire",
 "modifier_document_judiciaire": "Modifier un document judiciaire",
-"Judiciaire": "Judiciaire",
-"Administratif": "Administratif",
 "judiciaire_file": "Dossier judiciaire",
 "judiciaire_linked": "Document judiciaire lié",
 "modifier_document": "Modifier le document",
@@ -550,9 +547,21 @@
 "no_substitution_history": "Aucun historique de substitution",
 "confirm_delete_history": "Supprimer cette entrée de l'historique ?",
 "history_deleted": "Entrée supprimée",
-"refresh": "Actualiser"
-
-
+"refresh": "Actualiser",
+"utilisateur_modifie_succes": "Utilisateur modifié avec succès",
+"utilisateur_ajoute_succes":"Utilisateur ajouté avec succès",
+"utilisateur_supprime_succes":"Utilisateur supprimé avec succès",
+"equipement_ajoute_succes": "Équipement ajouté avec succès",
+"equipement_modifie_succes": "Équipement modifié avec succès",
+"equipement_supprime_succes": "Équipement supprimé avec succès",
+"equipement_charge_succes": "Équipement chargé avec succès",
+"equipement_decharge_succes": "Équipement déchargé avec succès",
+"service_ajoute_succes": "Service ajouté avec succès",
+"service_modifie_succes": "Service modifié avec succès",
+"service_supprime_succes": "Service supprimé avec succès",
+"voir_par_service": "Voir par service",
+"mes_transactions_envoyees":"mes transactions envoyées",
+"toutes_mes_transactions":"toutes mes transactions"
 
 }
 

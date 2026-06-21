@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../hooks/usePermissions';
+import { useModal } from '../context/ModalContext';
 import SearchableSelect from './SearchableSelect';
 
 function GererServices() {
   const { t } = useTranslation();
+  const { showAlert, showConfirm } = useModal();
   const perms = usePermissions();
 
   if (!perms.canViewServices) {
@@ -16,6 +18,7 @@ function GererServices() {
   const [form, setForm] = useState({ idService: '', nomService: '', description: '', etage: '' });
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
   const [filterEtage, setFilterEtage] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
@@ -56,6 +59,7 @@ function GererServices() {
           description: form.description,
           etage: form.etage || null
         });
+        setSuccess(t('service_modifie_succes') || 'Service modifié avec succès');
       } else {
         await axios.post('/api/services', {
           idService: idNum,
@@ -63,7 +67,9 @@ function GererServices() {
           description: form.description,
           etage: form.etage || null
         });
+        setSuccess(t('service_ajoute_succes') || 'Service ajouté avec succès');
       }
+      setTimeout(() => setSuccess(''), 3000);
       resetForm();
       fetchServices();
     } catch (err) { setError(err.response?.data || t('erreur')); }
@@ -76,9 +82,14 @@ function GererServices() {
   };
   const handleDelete = async (id) => {
     if (!perms.canManageServices) return;
-    if (window.confirm(t('confirmation_supprimer'))) {
-      try { await axios.delete(`/api/services/${id}`); fetchServices(); }
-      catch (err) { setError(err.response?.data); }
+    const confirmed = await showConfirm(t('confirmation_supprimer'), null, t('confirmation'), true);
+    if (confirmed) {
+      try {
+        await axios.delete(`/api/services/${id}`);
+        setSuccess(t('service_supprime_succes') || 'Service supprimé avec succès');
+        setTimeout(() => setSuccess(''), 3000);
+        fetchServices();
+      } catch (err) { setError(err.response?.data); }
     }
   };
   const exportToExcel = () => {
@@ -122,8 +133,8 @@ function GererServices() {
       const res = await axios.post(`/api/services/import/execute?${params.toString()}`, formData);
       const data = res.data;
       if (data.errors && data.errors.length) {
-        alert(`${data.message}\n\n${t('details_erreurs')} :\n${data.errors.join('\n')}`);
-      } else { alert(data.message); }
+        showAlert(`${data.message}\n\n${t('details_erreurs')} :\n${data.errors.join('\n')}`, t('attention'));
+      } else { showAlert(data.message, t('succes')); }
       if (data.imported > 0) fetchServices();
       setShowMapping(false);
       setImportFile(null);
@@ -168,6 +179,7 @@ function GererServices() {
     <div className="page-container">  {/* ← plus de dir="rtl" fixe */}
       <h1 className="page-title">{t('gerer_services')}</h1>
       {error && <div className="error-message">{error}</div>}
+      {success && <div className="success-message">{success}</div>}
       <div className="filters">
         <input type="text" placeholder={t('rechercher_service')} value={search} onChange={e => setSearch(e.target.value)} className="form-input" />
         <input type="text" placeholder={t('filtrer_etage')} value={filterEtage} onChange={e => setFilterEtage(e.target.value)} className="form-input" />

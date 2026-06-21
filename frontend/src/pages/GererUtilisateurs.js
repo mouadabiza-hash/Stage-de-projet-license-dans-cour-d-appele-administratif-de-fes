@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../hooks/usePermissions';
+import { useModal } from '../context/ModalContext';
 import SearchableSelect from './SearchableSelect';
 
 const ROLES = ['Admin', 'Directeur', 'Greffier', 'Enregistrement', 'Archive', 'Employe', 'Procedures', 'Consultant'];
 
 function GererUtilisateurs() {
     const { t } = useTranslation();
+    const { showAlert, showConfirm } = useModal();
     const perms = usePermissions();
 
     if (!perms.canViewUsers) {
@@ -32,6 +34,7 @@ function GererUtilisateurs() {
     const [newPassword, setNewPassword] = useState('');
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [currentPage, setCurrentPage] = useState(1);
+    const [success, setSuccess] = useState('');
 
     // Prepare options for SearchableSelect
     const roleOptions = ROLES.map(r => ({ value: r, label: r }));
@@ -68,9 +71,18 @@ function GererUtilisateurs() {
         }
         try {
             if (editingId) {
+                // Check if trying to change Admin password
+                const editingUser = users.find(u => u.id === editingId);
+                if (editingUser && editingUser.role === 'Admin' && form.password) {
+                    setError(t('erreur_mot_de_passe_admin_non_modifiable') || 'Le mot de passe de l\'administrateur ne peut pas être modifié.');
+                    return;
+                }
+                
                 const payload = { nomComplet: form.nomComplet, login: form.login, idService: parseInt(form.idService), role: form.role };
                 if (form.password) payload.password = form.password;
                 await axios.put(`/api/utilisateurs/${editingId}`, payload);
+                setSuccess(t('utilisateur_modifie_succes') || 'Utilisateur modifié avec succès');
+                setTimeout(() => setSuccess(''), 3000);
             } else {
                 if (!form.password) { setError(t('erreur_mot_de_passe_requis')); return; }
                 await axios.post('/api/utilisateurs', {
@@ -80,6 +92,8 @@ function GererUtilisateurs() {
                     idService: parseInt(form.idService),
                     role: form.role
                 });
+                setSuccess(t('utilisateur_ajoute_succes') || 'Utilisateur ajouté avec succès');
+                setTimeout(() => setSuccess(''), 3000);
             }
             resetForm();
             fetchUsers();
@@ -93,17 +107,32 @@ function GererUtilisateurs() {
     };
     const handleDelete = async (id) => {
         if (!perms.canManageUsers) return;
-        if (window.confirm(t('confirmation_supprimer_utilisateur'))) {
-            try { await axios.delete(`/api/utilisateurs/${id}`); fetchUsers(); setSelectedIds(selectedIds.filter(i => i !== id)); }
+        const confirmed = await showConfirm(t('confirmation_supprimer_utilisateur'), null, t('confirmation'), true);
+        if (confirmed) {
+            try { 
+                await axios.delete(`/api/utilisateurs/${id}`); 
+                setSuccess(t('utilisateur_supprime_succes') || 'Utilisateur supprimé avec succès');
+                setTimeout(() => setSuccess(''), 3000);
+                fetchUsers(); 
+                setSelectedIds(selectedIds.filter(i => i !== id)); 
+            }
             catch (err) { setError(t('erreur_suppression')); }
         }
     };
     const changePassword = async () => {
         if (!perms.canManageUsers) return;
-        if (!newPassword.trim()) { alert(t('mot_de_passe_vide')); return; }
+        
+        // Prevent password change for Admin role
+        const selectedUser = users.find(u => u.id === selectedUserId);
+        if (selectedUser && selectedUser.role === 'Admin') {
+            showAlert(t('erreur_mot_de_passe_admin_non_modifiable') || 'Le mot de passe de l\'administrateur ne peut pas être modifié.', t('attention'));
+            return;
+        }
+        
+        if (!newPassword.trim()) { showAlert(t('mot_de_passe_vide'), t('attention')); return; }
         try {
             await axios.put(`/api/utilisateurs/${selectedUserId}`, { password: newPassword });
-            alert(t('mot_de_passe_modifie'));
+            showAlert(t('mot_de_passe_modifie'), t('succes'));
             setShowPasswordModal(false);
             setNewPassword('');
             setSelectedUserId(null);
@@ -169,9 +198,9 @@ function GererUtilisateurs() {
             const res = await axios.post(`/api/utilisateurs/import/execute?${params.toString()}`, formData);
             const data = res.data;
             if (data.errors && data.errors.length) {
-                alert(`${data.imported} ${t('utilisateurs_importes')}\n${t('details_erreurs')} :\n${data.errors.join('\n')}`);
+                showAlert(`${data.imported} ${t('utilisateurs_importes')}\n${t('details_erreurs')} :\n${data.errors.join('\n')}`, t('attention'));
             } else {
-                alert(`${data.imported} ${t('utilisateurs_importes_succes')}`);
+                showAlert(`${data.imported} ${t('utilisateurs_importes_succes')}`, t('succes'));
             }
             if (data.imported > 0) fetchUsers();
             setShowMapping(false);
@@ -199,6 +228,7 @@ function GererUtilisateurs() {
         <div className="page-container" >
             <h1 className="page-title">{t('gerer_utilisateurs')}</h1>
             {error && <div className="error-message">{error}</div>}
+            {success && <div className="success-message">{success}</div>}
             <div className="filters">
                 <input type="text" placeholder={t('rechercher_utilisateur')} value={search} onChange={e => setSearch(e.target.value)} className="form-input" />
                 <SearchableSelect
@@ -278,7 +308,20 @@ function GererUtilisateurs() {
                             </div>
                             <div className="form-field">
                                 <label>{t('mot_de_passe')} {!editingId && '*'}</label>
-                                <input type="password" name="password" value={form.password} onChange={handleChange} required={!editingId} placeholder={editingId ? t('laisser_vide') : ""} className="form-input" />
+                                <input 
+                                    type="password" 
+                                    name="password" 
+                                    value={form.password} 
+                                    onChange={handleChange} 
+                                    required={!editingId} 
+                                    disabled={editingId && users.find(u => u.id === editingId)?.role === 'Admin'}
+                                    placeholder={
+                                        editingId && users.find(u => u.id === editingId)?.role === 'Admin' 
+                                            ? "Le mot de passe admin ne peut pas être modifié" 
+                                            : t('laisser_vide')
+                                    } 
+                                    className="form-input" 
+                                />
                             </div>
                             <div className="form-field">
                                 <label>{t('service')} *</label>
@@ -346,7 +389,9 @@ function GererUtilisateurs() {
                                     <td className="action-icons">
                                         <button onClick={() => handleEdit(u)}>✏️</button>
                                         <button onClick={() => handleDelete(u.id)}>🗑️</button>
-                                        <button onClick={() => { setSelectedUserId(u.id); setShowPasswordModal(true); }} style={{ color: 'blue' }}>🔑</button>
+                                        {u.role !== 'Admin' && (
+                                            <button onClick={() => { setSelectedUserId(u.id); setShowPasswordModal(true); }} style={{ color: 'blue' }}>🔑</button>
+                                        )}
                                     </td>
                                 )}
                             </tr>

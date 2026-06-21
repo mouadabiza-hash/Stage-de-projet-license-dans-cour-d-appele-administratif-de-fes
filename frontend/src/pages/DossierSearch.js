@@ -25,6 +25,12 @@ function DossierSearch() {
     const inputFiles = Array.from(e.target.files);
     if (inputFiles.length === 0) return;
 
+    // Check if we got actual folder structure (webkitRelativePath exists)
+    if (!inputFiles[0].webkitRelativePath) {
+      setError(t('dossier_api_error') || 'La sélection de dossier n\'est pas supportée par votre navigateur.');
+      return;
+    }
+
     // Le premier fichier contient le chemin relatif du dossier (webkitRelativePath)
     const folderName = inputFiles[0].webkitRelativePath.split('/')[0];
     setSelectedFolderName(folderName);

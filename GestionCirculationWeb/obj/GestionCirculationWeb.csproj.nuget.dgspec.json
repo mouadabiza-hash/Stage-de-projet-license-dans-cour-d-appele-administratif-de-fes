@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\hp\\Stage-PRojet-1\\GestionCirculationWeb\\GestionCirculationWeb.csproj": {}
+    "C:\\Users\\hp\\Stage-de-projet-license-dans-cour-d-appele-administratif-de-fes\\GestionCirculationWeb\\GestionCirculationWeb.csproj": {}
   },
   "projects": {
-    "C:\\Users\\hp\\Stage-PRojet-1\\GestionCirculationWeb\\GestionCirculationWeb.csproj": {
+    "C:\\Users\\hp\\Stage-de-projet-license-dans-cour-d-appele-administratif-de-fes\\GestionCirculationWeb\\GestionCirculationWeb.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\hp\\Stage-PRojet-1\\GestionCirculationWeb\\GestionCirculationWeb.csproj",
+        "projectUniqueName": "C:\\Users\\hp\\Stage-de-projet-license-dans-cour-d-appele-administratif-de-fes\\GestionCirculationWeb\\GestionCirculationWeb.csproj",
         "projectName": "GestionCirculationWeb",
-        "projectPath": "C:\\Users\\hp\\Stage-PRojet-1\\GestionCirculationWeb\\GestionCirculationWeb.csproj",
+        "projectPath": "C:\\Users\\hp\\Stage-de-projet-license-dans-cour-d-appele-administratif-de-fes\\GestionCirculationWeb\\GestionCirculationWeb.csproj",
         "packagesPath": "C:\\Users\\hp\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\hp\\Stage-PRojet-1\\GestionCirculationWeb\\obj\\",
+        "outputPath": "C:\\Users\\hp\\Stage-de-projet-license-dans-cour-d-appele-administratif-de-fes\\GestionCirculationWeb\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

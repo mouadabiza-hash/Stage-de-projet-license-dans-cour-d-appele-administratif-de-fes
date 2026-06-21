@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useTranslation } from "react-i18next";
+import { useModal } from "../context/ModalContext";
 import { usePermissions } from "../hooks/usePermissions";
 
 function TousLesRetraits() {
   const { t } = useTranslation();
+  const { showConfirm } = useModal();
   const perms = usePermissions();
   const canManageRetraits = perms.canArchive;
 
@@ -54,7 +56,8 @@ function TousLesRetraits() {
 
   const handleAnnuler = async (retraitId) => {
     if (!canManageRetraits) return;
-    if (!window.confirm(t("confirmation_annuler_retrait") || "Annuler ce retrait ?")) return;
+    const confirmed = await showConfirm(t("confirmation_annuler_retrait") || "Annuler ce retrait ?", null, t("confirmation"));
+    if (!confirmed) return;
     try {
       await axios.delete(`/api/acteursjudiciaires/retraits/${retraitId}`);
       setGlobalSuccess(t("retrait_annule") || "Retrait annulé");

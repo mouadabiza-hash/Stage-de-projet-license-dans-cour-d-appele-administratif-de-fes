@@ -1,4 +1,4 @@
-{
+﻿{
   "dashboard": "لوحة القيادة",
   "administrateur": "مدير النظام",
   "connecte": "متصل",
@@ -498,8 +498,6 @@
 "document_source": "مصدر الوثيقة",
 "ajouter_document_judiciaire": "إضافة وثيقة قضائية",
 "modifier_document_judiciaire": "تعديل وثيقة قضائية",
-"Judiciaire": "قضائي",
-"Administratif": "إداري",
 "judiciaire_file": "ملف قضائي",
 "judiciaire_linked": "وثيقة قضائية مرتبطة",
 "modifier_document": "تعديل الوثيقة",
@@ -568,7 +566,18 @@
 "no_substitution_history": "لا يوجد سجل استبدال",
 "confirm_delete_history": "هل تريد حذف هذا السجل؟",
 "history_deleted": "تم حذف السجل",
-"refresh": "تحديث"
+"refresh": "تحديث",
+"utilisateur_modifie_succes":"تم تعديل المستخدم بنجاح",
+"utilisateur_ajoute_succes":"تم إضافة المستخدم بنجاح",
+"utilisateur_supprime_succes":"تم حذف المستخدم بنجاح",
+"equipement_ajoute_succes": "تم إضافة المعدة بنجاح",
+"equipement_modifie_succes": "تم تعديل المعدة بنجاح",
+"equipement_supprime_succes": "تم حذف المعدة بنجاح",
+"equipement_charge_succes": "تم تحميل المعدة بنجاح",
+"equipement_decharge_succes": "تم تفريغ المعدة بنجاح",
+"service_ajoute_succes": "تم إضافة الخدمة بنجاح",
+"service_modifie_succes": "تم تعديل الخدمة بنجاح",
+"service_supprime_succes": "تم حذف الخدمة بنجاح",
+"select_file_to_view": "الرجاء اختيار ملف لعرضه"
 }
-
 

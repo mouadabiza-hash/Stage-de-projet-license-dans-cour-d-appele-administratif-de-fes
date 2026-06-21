@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../hooks/usePermissions';
 import { useAuth } from '../context/AuthContext';
+import { useModal } from '../context/ModalContext';
 import DocumentModal from '../components/DocumentModal';
 import SearchableSelect from './SearchableSelect';
 
@@ -11,6 +12,7 @@ function MesEntites() {
   const locale = i18n.language;
   const perms = usePermissions();
   const { user } = useAuth();
+  const { showConfirm } = useModal();
   const serviceId = user?.idService;
 
   const [allDocuments, setAllDocuments] = useState([]);
@@ -187,7 +189,8 @@ function MesEntites() {
 
   const handleArchive = async (doc) => {
     if (!perms.canArchive) return;
-    if (!window.confirm(t('confirmation_archiver'))) return;
+    const confirmed = await showConfirm(t('confirmation_archiver'), null, t('confirmation'), true);
+    if (!confirmed) return;
     const docType = doc.type || doc.Type;
     const docId = doc.idEntite;
     try {
@@ -369,7 +372,8 @@ const submitForm = async () => {
   const getSelectedDocs = (docs) => docs.filter(d => selectedIds.includes(`${d.idEntite}_${d.type || d.Type}`));
   const handleBulkArchive = async (docs) => {
     if (!perms.canArchive || docs.length === 0) return;
-    if (!window.confirm(`${t('confirmation_archiver')} (${docs.length} documents)`)) return;
+    const confirmed = await showConfirm(`${t('confirmation_archiver')} (${docs.length} documents)`, null, t('confirmation'), true);
+    if (!confirmed) return;
     let ok = 0, fail = 0;
     for (let doc of docs) {
       try {

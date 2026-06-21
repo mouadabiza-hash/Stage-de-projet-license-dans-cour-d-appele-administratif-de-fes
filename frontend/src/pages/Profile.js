@@ -2,10 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
+import { useModal } from '../context/ModalContext';
 
 function Profile() {
   const { t } = useTranslation();
   const { user, setUser } = useAuth();
+  const { showConfirm } = useModal();
   const [allUsers, setAllUsers] = useState([]);
   const [selectedSubstituteId, setSelectedSubstituteId] = useState('');
   const [substitutionHistory, setSubstitutionHistory] = useState([]);
@@ -98,7 +100,8 @@ function Profile() {
   };
 
   const handleDeleteHistory = async (historyId) => {
-    if (!window.confirm(t('confirm_delete_history'))) return;
+    const confirmed = await showConfirm(t('confirm_delete_history'), null, t('confirmation'), true);
+    if (!confirmed) return;
     try {
       await axios.delete(`/api/utilisateurs/substitution-history/${historyId}`);
       await loadHistory();

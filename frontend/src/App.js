@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ModalProvider } from './context/ModalContext';
 import Login from './pages/Login';
 import PrivateRoute from './components/PrivateRoute';
 import MainLayout from './layouts/MainLayout';
@@ -52,7 +53,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <ModalProvider>
+          <AppRoutes />
+        </ModalProvider>
       </AuthProvider>
     </BrowserRouter>
   );

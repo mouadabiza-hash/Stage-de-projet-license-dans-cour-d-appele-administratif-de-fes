@@ -3,13 +3,88 @@ import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useModal } from '../context/ModalContext';
 import DocumentModal from '../components/DocumentModal';
 
+// ── Reusable HiddenPopup ──────────────────────────────────────────────────────
+function HiddenPopup({ items, searchValue, onSearchChange, onRestore, onClose, t, formatDate }) {
+  return (
+    <div
+      className="modal-overlay"
+      style={{ zIndex: 1100 }}
+      onClick={onClose}
+    >
+      <div
+        className="modal"
+        style={{ maxWidth: '520px', maxHeight: '75vh', overflowY: 'auto', zIndex: 1101 }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="registry-panel-header" style={{ borderBottom: '2px solid #ff9800', marginBottom: '1rem' }}>
+          <h3 style={{ color: '#ff9800', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            🔒 {t('transactions_masquees')} <span style={{ background: '#ff9800', color: '#fff', borderRadius: '12px', padding: '0 8px', fontSize: '0.85rem' }}>{items.length}</span>
+          </h3>
+          <button className="btn-secondary" onClick={onClose}>{t('fermer')}</button>
+        </div>
+
+        {/* Search */}
+        <input
+          type="text"
+          placeholder={t('chercher')}
+          value={searchValue}
+          onChange={e => onSearchChange(e.target.value)}
+          style={{ width: '100%', padding: '0.65rem 0.9rem', borderRadius: '6px', border: '1px solid var(--line)', fontSize: '0.95rem', marginBottom: '1rem', boxSizing: 'border-box' }}
+          autoFocus
+        />
+
+        {/* List */}
+        {items.filter(item =>
+          (item.documentSujet || '').toLowerCase().includes(searchValue.toLowerCase())
+        ).length === 0 ? (
+          <p className="text-muted" style={{ textAlign: 'center', padding: '2rem 0' }}>{t('aucune_masquee')}</p>
+        ) : (
+          <div className="transaction-list">
+            {items
+              .filter(item => (item.documentSujet || '').toLowerCase().includes(searchValue.toLowerCase()))
+              .map(item => (
+                <div key={item.id} className="transaction-item" style={{ borderLeft: '3px solid #ff9800' }}>
+                  <div className="transaction-header">
+                    <span className="transaction-title">{item.documentSujet || 'Document'}</span>
+                    <span className="transaction-badge" style={{ backgroundColor: '#fff3e0', color: '#e65100' }}>{t('masquee')}</span>
+                  </div>
+                  <div className="transaction-details">
+                    {item.sourceServiceNom && <span>{t('de')} : {item.sourceServiceNom}</span>}
+                    {item.destinationServiceNom && <span>{t('service_destinataire')} : {item.destinationServiceNom}</span>}
+                    {item.message && <span>{t('message')} : {item.message}</span>}
+                    {item.dateEnvoi && <span>{t('envoye_le')} : {formatDate(item.dateEnvoi)}</span>}
+                    {item.dateReponse && <span>{t('date_reponse')} : {formatDate(item.dateReponse)}</span>}
+                    {item.messageReponse && <span>{t('reponse')} : {item.messageReponse}</span>}
+                  </div>
+                  <div className="transaction-actions">
+                    <button
+                      className="btn-primary"
+                      style={{ background: '#ff9800', borderColor: '#ff9800' }}
+                      onClick={() => onRestore(item.id)}
+                    >
+                      🔓 {t('restaurer')}
+                    </button>
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Dashboard ────────────────────────────────────────────────────────────
 function Dashboard() {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage?.startsWith('ar') ? 'ar-MA' : 'fr-FR';
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showConfirm } = useModal();
   const serviceId = user?.idService;
 
   const [pending, setPending] = useState([]);
@@ -30,6 +105,10 @@ function Dashboard() {
   const [showReturnsModal, setShowReturnsModal] = useState(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [incomingReply, setIncomingReply] = useState({});
+
+  // ── Hidden-popup state (one per section) ──────────────────────────────────
+  const [showHiddenPopup, setShowHiddenPopup] = useState(null); // 'notifications'|'pending'|'completed'|'returns'
+  const [hiddenSearches, setHiddenSearches] = useState({ notifications: '', pending: '', completed: '', returns: '' });
 
   const [documents, setDocuments] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -55,8 +134,6 @@ function Dashboard() {
   const [transferMessage, setTransferMessage] = useState('');
   const [transferDoitRevenir, setTransferDoitRevenir] = useState(false);
 
-  // Restore modal state
-  const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [hiddenItemsDetails, setHiddenItemsDetails] = useState([]);
 
   // Toast messages
@@ -77,9 +154,8 @@ function Dashboard() {
     if (stored) setHiddenIds(JSON.parse(stored));
   }, []);
 
-  useEffect(() => {
-    fetchAllData();
-  }, [hiddenIds]);
+  useEffect(() => { fetchAllData(); }, [hiddenIds]);
+  useEffect(() => { fetchHiddenDetails(); }, [hiddenIds]);
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -94,16 +170,19 @@ function Dashboard() {
         axios.get('/api/documents'),
         axios.get('/api/transactions/pending-outgoing')
       ]);
-      setPending(pendingRes.data);
-      const filtered = outgoingRes.data.filter(tx => !hiddenIds.includes(tx.id));
-      setCompleted(filtered.filter(tx => isAccepted(tx.statut) || isRejected(tx.statut)));
-      setPendingReturns(returnsRes.data);
-      setIncoming(incomingRes.data);
-      setAllUsers(usersRes.data);
-      setServices(servicesRes.data);
-      setPendingTransactions(pendingTxRes.data);
+      const safeArray = (arr) => Array.isArray(arr) ? arr : [];
+      const currentHidden = JSON.parse(localStorage.getItem('hiddenDashboardTransactions') || '[]');
+      const notHidden = (arr) => safeArray(arr).filter(tx => tx && tx.id && !currentHidden.includes(tx.id));
 
-      const myDocs = docsRes.data.filter(doc => doc.idService === serviceId && !doc.isSubstitute);
+      setPending(notHidden(pendingRes.data));
+      const filtered = notHidden(outgoingRes.data);
+      setCompleted(filtered.filter(tx => tx && tx.statut && (isAccepted(tx.statut) || isRejected(tx.statut))));
+      setPendingReturns(notHidden(returnsRes.data));
+      setIncoming(notHidden(incomingRes.data));
+      setAllUsers(safeArray(usersRes.data));
+      setServices(safeArray(servicesRes.data));
+      setPendingTransactions(safeArray(pendingTxRes.data));
+      const myDocs = safeArray(docsRes.data).filter(doc => doc && doc.idService === serviceId && !doc.isSubstitute);
       setDocuments(myDocs);
       setError('');
     } catch (err) {
@@ -120,27 +199,33 @@ function Dashboard() {
   const formatDate = (value) => value ? new Date(value).toLocaleDateString(locale) : '-';
 
   const handleCancelOutgoing = async (id) => {
-    if (window.confirm(t('confirmation_annuler'))) {
+    const confirmed = await showConfirm(t('confirmation_annuler'), null, t('confirmation'), true);
+    if (confirmed) {
       await axios.post(`/api/transactions/${id}/cancel`);
       fetchAllData();
       showSuccess(t('transaction_annulee'));
     }
   };
-  const handleHide = (id) => {
-    if (window.confirm(t('confirmation_masquer'))) {
+
+  const handleHide = async (id) => {
+    const confirmed = await showConfirm(t('confirmation_masquer'), null, t('confirmation'));
+    if (confirmed) {
       const newHidden = [...hiddenIds, id];
       setHiddenIds(newHidden);
       localStorage.setItem('hiddenDashboardTransactions', JSON.stringify(newHidden));
       showSuccess(t('transaction_masquee'));
     }
   };
+
   const handleMarkReturned = async (id) => {
-    if (window.confirm(t('confirmation_retour'))) {
+    const confirmed = await showConfirm(t('confirmation_retour'), null, t('confirmation'));
+    if (confirmed) {
       await axios.post(`/api/transactions/${id}/mark-returned`);
       fetchAllData();
       showSuccess(t('document_retourne'));
     }
   };
+
   const handleIncomingRespond = async (id, accepte) => {
     const message = incomingReply[id] || '';
     try {
@@ -152,41 +237,77 @@ function Dashboard() {
       showError(err.response?.data?.message || t('erreur_reponse'));
     }
   };
+
   const handleHideTransaction = (id) => {
+    // Resolve type and item data BEFORE any state updates (arrays are still intact here)
+    let type = 'pending';
+    let item = pending.find(tx => tx.id === id);
+    if (item) {
+      type = 'pending';
+    } else {
+      item = incoming.find(n => n.id === id);
+      if (item) {
+        type = 'notifications';
+      } else {
+        item = pendingReturns.find(tx => tx.id === id);
+        if (item) {
+          type = 'returns';
+        } else {
+          item = completed.find(tx => tx.id === id);
+          if (item) type = 'completed';
+        }
+      }
+    }
+
+    // Now update hiddenIds and localStorage
     const newHidden = [...hiddenIds, id];
     setHiddenIds(newHidden);
     localStorage.setItem('hiddenDashboardTransactions', JSON.stringify(newHidden));
+
+    // Remove from all visible lists
     setPending(prev => prev.filter(tx => tx.id !== id));
     setCompleted(prev => prev.filter(tx => tx.id !== id));
     setPendingReturns(prev => prev.filter(tx => tx.id !== id));
     setIncoming(prev => prev.filter(n => n.id !== id));
+
+    // Add to hidden details with the correctly resolved type
+    setHiddenItemsDetails(prev => {
+      if (prev.find(d => d.id === id)) return prev; // already there
+      return [...prev, { ...item, id, documentSujet: item?.documentSujet || 'Document', type }];
+    });
+
     showSuccess(t('transaction_masquee'));
   };
 
-  // Restore functions
+  // ── Restore ───────────────────────────────────────────────────────────────
   const fetchHiddenDetails = async () => {
-    if (hiddenIds.length === 0) {
-      setHiddenItemsDetails([]);
-      return;
-    }
+    if (hiddenIds.length === 0) { setHiddenItemsDetails([]); return; }
     try {
-      const [outgoingRes, incomingRes] = await Promise.all([
-        axios.get('/api/transactions/outgoing'),
+      const [pendingRes, completedRes, returnsRes, incomingRes] = await Promise.all([
+        axios.get('/api/transactions/pending'),
+        axios.get('/api/transactions/completed'),
+        axios.get('/api/transactions/pending-returns'),
         axios.get('/api/transactions/incoming-accepted')
       ]);
-      const allTx = [...outgoingRes.data, ...incomingRes.data];
+      const allByType = {
+        pending: pendingRes.data.map(tx => ({ ...tx, type: 'pending' })),
+        completed: completedRes.data.map(tx => ({ ...tx, type: 'completed' })),
+        returns: returnsRes.data.map(tx => ({ ...tx, type: 'returns' })),
+        notifications: incomingRes.data.map(tx => ({ ...tx, type: 'notifications' }))
+      };
       const details = hiddenIds.map(id => {
-        const tx = allTx.find(t => t.id === id);
-        if (tx) {
-          return { id: tx.id, title: tx.documentSujet || 'Document' };
+        for (const [, items] of Object.entries(allByType)) {
+          const tx = items.find(t => t.id === id);
+          if (tx) return { ...tx, type: tx.type };
         }
-        return { id, title: `Transaction ${id}` };
+        return { id, documentSujet: `Transaction ${id}`, type: 'pending' };
       });
       setHiddenItemsDetails(details);
     } catch (err) {
-      console.error("Erreur chargement détails masqués", err);
+      console.error('Erreur chargement détails masqués', err);
     }
   };
+
   const handleRestore = (id) => {
     const newHidden = hiddenIds.filter(hid => hid !== id);
     setHiddenIds(newHidden);
@@ -195,6 +316,7 @@ function Dashboard() {
     fetchAllData();
     showSuccess(t('transaction_restauree'));
   };
+
   const handleRestoreAll = () => {
     setHiddenIds([]);
     localStorage.removeItem('hiddenDashboardTransactions');
@@ -203,54 +325,57 @@ function Dashboard() {
     showSuccess(t('toutes_restaurees'));
   };
 
-  // ---------- TRANSFER ----------
-  const openTransferChoice = (doc) => {
-    setTransferChoiceDoc(doc);
-    setShowTransferChoice(true);
+  // ── Hidden popup helpers ──────────────────────────────────────────────────
+  const openHiddenPopup = (type, e) => {
+    e.stopPropagation();
+    setShowHiddenPopup(type);
   };
+  const closeHiddenPopup = () => {
+    setShowHiddenPopup(null);
+    setHiddenSearches(prev => ({ ...prev, [showHiddenPopup]: '' }));
+  };
+
+  // Badge button rendered in modal headers
+  const HiddenBadgeButton = ({ type }) => {
+    const count = hiddenItemsDetails.filter(i => i.type === type).length;
+    if (count === 0) return null;
+    return (
+      <button
+        onClick={(e) => openHiddenPopup(type, e)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+          background: '#fff3e0', color: '#e65100', border: '1.5px solid #ff9800',
+          borderRadius: '20px', padding: '0.3rem 0.75rem', fontSize: '0.82rem',
+          fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s'
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = '#ffe0b2'}
+        onMouseLeave={e => e.currentTarget.style.background = '#fff3e0'}
+      >
+        🔒 {t('masquees')} <span style={{ background: '#ff9800', color: '#fff', borderRadius: '10px', padding: '0 6px', fontSize: '0.78rem' }}>{count}</span>
+      </button>
+    );
+  };
+
+  // ---------- TRANSFER ----------
+  const openTransferChoice = (doc) => { setTransferChoiceDoc(doc); setShowTransferChoice(true); };
   const openSingleTransferModal = (doc, isJudicial) => {
     setSingleTransferTarget(doc);
     setSingleTransferDocType(isJudicial ? 'Judiciaire' : 'Administratif');
-    setSingleTransferServiceId('');
-    setSingleTransferUsers([]);
-    setSingleTransferUserId('');
-    setSingleTransferDoitRevenir(false);
-    setSingleTransferMessage('');
+    setSingleTransferServiceId(''); setSingleTransferUsers([]); setSingleTransferUserId('');
+    setSingleTransferDoitRevenir(false); setSingleTransferMessage('');
     setShowSingleTransferModal(true);
   };
   const handleSingleServiceChange = async (value) => {
-    setSingleTransferServiceId(value);
-    setSingleTransferUsers([]);
-    setSingleTransferUserId('');
+    setSingleTransferServiceId(value); setSingleTransferUsers([]); setSingleTransferUserId('');
     if (!value) return;
-    try {
-      const res = await axios.get(`/api/utilisateurs?serviceId=${value}`);
-      setSingleTransferUsers(res.data);
-    } catch (err) {
-      showError(t('erreur_chargement'));
-    }
+    try { const res = await axios.get(`/api/utilisateurs?serviceId=${value}`); setSingleTransferUsers(res.data); }
+    catch (err) { showError(t('erreur_chargement')); }
   };
   const handleSingleTransfer = async () => {
-    if (!singleTransferTarget || !singleTransferUserId) {
-      showError(t('selection_requise'));
-      return;
-    }
-    const payload = {
-      documentId: singleTransferTarget.idEntite,
-      documentType: singleTransferDocType,
-      destinationServiceId: null,
-      destinationUserId: Number(singleTransferUserId),
-      doitRevenir: singleTransferDoitRevenir,
-      message: singleTransferMessage
-    };
-    try {
-      await axios.post('/api/transactions', payload);
-      showSuccess(t('transaction_envoyee'));
-      setShowSingleTransferModal(false);
-      fetchAllData();
-    } catch (err) {
-      showError(err.response?.data || t('erreur_transaction'));
-    }
+    if (!singleTransferTarget || !singleTransferUserId) { showError(t('selection_requise')); return; }
+    const payload = { documentId: singleTransferTarget.idEntite, documentType: singleTransferDocType, destinationServiceId: null, destinationUserId: Number(singleTransferUserId), doitRevenir: singleTransferDoitRevenir, message: singleTransferMessage };
+    try { await axios.post('/api/transactions', payload); showSuccess(t('transaction_envoyee')); setShowSingleTransferModal(false); fetchAllData(); }
+    catch (err) { showError(err.response?.data || t('erreur_transaction')); }
   };
   const handleTransferChoice = (mode) => {
     setShowTransferChoice(false);
@@ -258,112 +383,40 @@ function Dashboard() {
     else openTransferModal(transferChoiceDoc);
   };
   const openTransferModal = (doc) => {
-    setTransferTarget(doc);
-    setTransferSelections([]);
-    setTransferCurrentService('');
-    setTransferCurrentUserIds([]);
-    setTransferMessage('');
-    setTransferDoitRevenir(false);
+    setTransferTarget(doc); setTransferSelections([]); setTransferCurrentService('');
+    setTransferCurrentUserIds([]); setTransferMessage(''); setTransferDoitRevenir(false);
     setShowTransferModal(true);
   };
-  const handleTransferServiceChange = (svcId) => {
-    setTransferCurrentService(svcId);
-    setTransferCurrentUserIds([]);
-  };
-  const toggleCurrentUser = (userId) => {
-    setTransferCurrentUserIds(prev =>
-      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
-    );
-  };
+  const handleTransferServiceChange = (svcId) => { setTransferCurrentService(svcId); setTransferCurrentUserIds([]); };
+  const toggleCurrentUser = (userId) => { setTransferCurrentUserIds(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]); };
   const addCurrentSelection = () => {
     if (!transferCurrentService || transferCurrentUserIds.length === 0) return;
     setTransferSelections(prev => {
       const existing = prev.find(s => s.serviceId === transferCurrentService);
-      if (existing) {
-        return prev.map(s => s.serviceId === transferCurrentService
-          ? { ...s, userIds: [...new Set([...s.userIds, ...transferCurrentUserIds])] }
-          : s);
-      }
+      if (existing) return prev.map(s => s.serviceId === transferCurrentService ? { ...s, userIds: [...new Set([...s.userIds, ...transferCurrentUserIds])] } : s);
       return [...prev, { serviceId: transferCurrentService, userIds: [...transferCurrentUserIds] }];
     });
-    setTransferCurrentService('');
-    setTransferCurrentUserIds([]);
+    setTransferCurrentService(''); setTransferCurrentUserIds([]);
   };
-  const removeSelection = (serviceId) => {
-    setTransferSelections(prev => prev.filter(s => s.serviceId !== serviceId));
-  };
+  const removeSelection = (serviceId) => { setTransferSelections(prev => prev.filter(s => s.serviceId !== serviceId)); };
   const handleMultiTransfer = async () => {
     const allUserIds = transferSelections.flatMap(s => s.userIds);
-    if (!transferTarget || allUserIds.length === 0) {
-      showError(t('selection_requise'));
-      return;
-    }
+    if (!transferTarget || allUserIds.length === 0) { showError(t('selection_requise')); return; }
     try {
       for (let userId of allUserIds) {
-        await axios.post('/api/transactions', {
-          documentId: transferTarget.idEntite,
-          documentType: transferTarget.type,
-          destinationServiceId: null,
-          destinationUserId: userId,
-          doitRevenir: transferDoitRevenir,
-          message: transferMessage
-        });
+        await axios.post('/api/transactions', { documentId: transferTarget.idEntite, documentType: transferTarget.type, destinationServiceId: null, destinationUserId: userId, doitRevenir: transferDoitRevenir, message: transferMessage });
       }
-      showSuccess(t('transaction_envoyee'));
-      setShowTransferModal(false);
-      fetchAllData();
-    } catch (err) {
-      showError(err.response?.data?.message || t('erreur_transaction'));
-    }
+      showSuccess(t('transaction_envoyee')); setShowTransferModal(false); fetchAllData();
+    } catch (err) { showError(err.response?.data?.message || t('erreur_transaction')); }
   };
 
   // ---------- DOCUMENT CONSULTATION ----------
   const handleConsult = async (item) => {
     const buildFallback = (src, isTransaction) => {
       if (isTransaction) {
-        return {
-          id: src.documentId,
-          idBureauOrdre: src.numeroCourrier || '',
-          date: src.dateEnvoi,
-          sujet: src.documentSujet || '',
-          source: src.sourceServiceNom || '',
-          destinataire: src.destinationServiceNom || '',
-          description: src.message || '',
-          etat: src.statut || '',
-          lienPdf: src.lienPdf || '',
-          typeDocument: src.documentType || '',
-          serviceNom: src.destinationServiceNom || '',
-          numeroDossier: src.numeroDossierJudiciaire || '',
-          direction: '',
-          typeRegistre: '',
-          typeCorrespondance: '',
-          estTransmissible: false,
-          emplacement: src.emplacement || src.destinationServiceNom || '',
-          numeroDeCourrier: src.numeroCourrier || '',
-          retraits: [],
-        };
+        return { id: src.documentId, idBureauOrdre: src.numeroCourrier || '', date: src.dateEnvoi, sujet: src.documentSujet || '', source: src.sourceServiceNom || '', destinataire: src.destinationServiceNom || '', description: src.message || '', etat: src.statut || '', lienPdf: src.lienPdf || '', typeDocument: src.documentType || '', serviceNom: src.destinationServiceNom || '', numeroDossier: src.numeroDossierJudiciaire || '', direction: '', typeRegistre: '', typeCorrespondance: '', estTransmissible: false, emplacement: src.emplacement || src.destinationServiceNom || '', numeroDeCourrier: src.numeroCourrier || '', retraits: [] };
       } else {
-        return {
-          id: src.idEntite,
-          idBureauOrdre: src.idBureauOrdre || '',
-          date: src.dateCreation,
-          sujet: src.sujet || '',
-          source: src.source || '',
-          destinataire: src.destinataire || '',
-          description: src.description || '',
-          etat: src.etat || '',
-          lienPdf: src.lienPdf || '',
-          typeDocument: src.type || '',
-          serviceNom: src.serviceNom || '',
-          numeroDossier: src.numeroDossierJudiciaire || '',
-          direction: src.direction || '',
-          typeRegistre: src.typeRegistre || '',
-          typeCorrespondance: src.typeCorrespondance || '',
-          estTransmissible: src.estTransmissible || false,
-          emplacement: src.emplacement || '',
-          numeroDeCourrier: src.numeroCourrier || '',
-          retraits: src.retraits || [],
-        };
+        return { id: src.idEntite, idBureauOrdre: src.idBureauOrdre || '', date: src.dateCreation, sujet: src.sujet || '', source: src.source || '', destinataire: src.destinataire || '', description: src.description || '', etat: src.etat || '', lienPdf: src.lienPdf || '', typeDocument: src.type || '', serviceNom: src.serviceNom || '', numeroDossier: src.numeroDossierJudiciaire || '', direction: src.direction || '', typeRegistre: src.typeRegistre || '', typeCorrespondance: src.typeCorrespondance || '', estTransmissible: src.estTransmissible || false, emplacement: src.emplacement || '', numeroDeCourrier: src.numeroCourrier || '', retraits: src.retraits || [] };
       }
     };
     const isTransaction = item.hasOwnProperty('documentId');
@@ -374,7 +427,7 @@ function Dashboard() {
       const res = await axios.get(`/api/documents/${id}?type=${type}`);
       setCurrentDocument(res.data);
     } catch (err) {
-      console.warn("Erreur API, utilisation fallback", err);
+      console.warn('Erreur API, utilisation fallback', err);
       setCurrentDocument(fallback);
     }
     setShowDocModal(true);
@@ -387,12 +440,16 @@ function Dashboard() {
   };
 
   // Pagination
-  const filteredDocs = documents.filter(doc =>
-    (doc.sujet || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (doc.type || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (doc.source || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (doc.numeroDossierJudiciaire || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredDocs = (Array.isArray(documents) ? documents : []).filter(doc => {
+    if (!doc) return false;
+    const searchStr = (searchTerm || '').toLowerCase();
+    return (
+      (String(doc.sujet || '')).toLowerCase().includes(searchStr) ||
+      (String(doc.type || '')).toLowerCase().includes(searchStr) ||
+      (String(doc.source || '')).toLowerCase().includes(searchStr) ||
+      (String(doc.numeroDossierJudiciaire || '')).toLowerCase().includes(searchStr)
+    );
+  });
   const idxLast = currentPage * rowsPerPage;
   const idxFirst = idxLast - rowsPerPage;
   const currentDocs = filteredDocs.slice(idxFirst, idxLast);
@@ -400,10 +457,10 @@ function Dashboard() {
   useEffect(() => { setCurrentPage(1); }, [searchTerm]);
 
   const stats = {
-    pending: pending.length,
-    accepted: completed.filter(tx => isAccepted(tx.statut)).length,
-    rejected: completed.filter(tx => isRejected(tx.statut)).length,
-    cancelled: completed.filter(tx => isCancelled(tx.statut)).length,
+    pending: Array.isArray(pending) ? pending.length : 0,
+    accepted: (Array.isArray(completed) ? completed : []).filter(tx => tx && isAccepted(tx.statut)).length,
+    rejected: (Array.isArray(completed) ? completed : []).filter(tx => tx && isRejected(tx.statut)).length,
+    cancelled: (Array.isArray(completed) ? completed : []).filter(tx => tx && isCancelled(tx.statut)).length,
   };
 
   if (loading) return <div className="loading">{t('chargement')}</div>;
@@ -424,14 +481,8 @@ function Dashboard() {
         </div>
       )}
 
-      <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1>{t('dashboard')}</h1>
-          <p>{t('dashboard_subtitle')}</p>
-        </div>
-        <button className="btn-secondary" onClick={() => { fetchHiddenDetails(); setShowRestoreModal(true); }}>
-          🔓 {t('restaurer_masquees')} ({hiddenIds.length})
-        </button>
+      <div className="dashboard-header">
+        <div><h1>{t('dashboard')}</h1><p>{t('dashboard_subtitle')}</p></div>
       </div>
 
       <div className="stats-grid">
@@ -457,13 +508,8 @@ function Dashboard() {
         <table className="modern-table">
           <thead>
             <tr>
-              <th>{t('titre')}</th>
-              <th>{t('numero_dossier_judiciaire')}</th>
-              <th>{t('type')}</th>
-              <th>{t('date')}</th>
-              <th>{t('source')}</th>
-              <th>{t('destinataire')}</th>
-              <th>{t('actions')}</th>
+              <th>{t('titre')}</th><th>{t('numero_dossier_judiciaire')}</th><th>{t('type')}</th>
+              <th>{t('date')}</th><th>{t('source')}</th><th>{t('destinataire')}</th><th>{t('actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -476,21 +522,16 @@ function Dashboard() {
                 const isJudicial = doc.type === 'Judiciaire';
                 return (
                   <tr key={`${doc.idEntite}_${doc.type}`}>
-                    <td>{doc.sujet || '-'}</td>
-                    <td>{doc.numeroDossierJudiciaire || '-'}</td>
-                    <td>{doc.type || '-'}</td>
-                    <td>{formatDate(doc.dateCreation)}</td>
-                    <td>{doc.source || '-'}</td>
-                    <td>{doc.destinataire || '-'}</td>
+                    <td>{doc.sujet || '-'}</td><td>{doc.numeroDossierJudiciaire || '-'}</td>
+                    <td>{doc.type || '-'}</td><td>{formatDate(doc.dateCreation)}</td>
+                    <td>{doc.source || '-'}</td><td>{doc.destinataire || '-'}</td>
                     <td className="action-icons">
                       <button onClick={() => handleConsult(doc)}>{t('consulter')}</button>
                       {pendingTx && <button onClick={() => handleCancelOutgoing(pendingTx.id)} style={{ color: 'red' }}>{t('annuler')}</button>}
                       {canTransfer && (
-                        isJudicial ? (
-                          <button onClick={() => openSingleTransferModal(doc, true)}>{t('transferer')}</button>
-                        ) : (
-                          <button onClick={() => openTransferChoice(doc)}>{t('transferer')}</button>
-                        )
+                        isJudicial
+                          ? <button onClick={() => openSingleTransferModal(doc, true)}>{t('transferer')}</button>
+                          : <button onClick={() => openTransferChoice(doc)}>{t('transferer')}</button>
                       )}
                     </td>
                   </tr>
@@ -528,16 +569,20 @@ function Dashboard() {
 
       {/* ========== MODALS ========== */}
 
-      {/* Notifications Modal - separated */}
+      {/* Notifications Modal */}
       {showNotificationsModal && (
         <div className="modal-overlay" onClick={() => setShowNotificationsModal(false)}>
           <div className="modal" style={{ maxWidth: '900px', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div className="registry-panel-header">
               <h3>{t('notifications')}</h3>
-              <button className="btn-secondary" onClick={() => setShowNotificationsModal(false)}>{t('fermer')}</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                {/* 🔒 Masquées button */}
+                <HiddenBadgeButton type="notifications" />
+                <button className="btn-secondary" onClick={() => setShowNotificationsModal(false)}>{t('fermer')}</button>
+              </div>
             </div>
 
-            {/* Own notifications (isSubstitute = false) */}
+            {/* Own notifications */}
             <div style={{ marginBottom: '1.5rem' }}>
               <h4 style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {t('mes_notifications')}
@@ -546,7 +591,7 @@ function Dashboard() {
               {incoming.filter(n => !n.isSubstitute).length === 0 ? (
                 <p className="text-muted">{t('aucune_notification')}</p>
               ) : (
-                <div className="notif-list" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                <div className="notif-list">
                   {incoming.filter(n => !n.isSubstitute).map(n => (
                     <div key={n.id} className="notif-card">
                       <div className="notif-card-accent" />
@@ -569,6 +614,7 @@ function Dashboard() {
                         <div className="notif-actions">
                           <button className="notif-btn notif-btn-accept" onClick={() => handleIncomingRespond(n.id, true)}>✓ {t('accepter')}</button>
                           <button className="notif-btn notif-btn-reject" onClick={() => handleIncomingRespond(n.id, false)}>✕ {t('refuser')}</button>
+                          <button className="notif-btn" onClick={() => handleHideTransaction(n.id)} style={{ backgroundColor: '#666' }}>🔒 {t('masquer')}</button>
                         </div>
                       </div>
                     </div>
@@ -577,14 +623,14 @@ function Dashboard() {
               )}
             </div>
 
-            {/* Substitute notifications - only if any */}
+            {/* Substitute notifications */}
             {incoming.filter(n => n.isSubstitute).length > 0 && (
               <div>
                 <h4 style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   {t('notifications_substitution')}
                   <span className="notif-count-badge">{incoming.filter(n => n.isSubstitute).length}</span>
                 </h4>
-                <div className="notif-list" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                <div className="notif-list">
                   {incoming.filter(n => n.isSubstitute).map(n => (
                     <div key={n.id} className="notif-card">
                       <div className="notif-card-accent" />
@@ -607,6 +653,7 @@ function Dashboard() {
                         <div className="notif-actions">
                           <button className="notif-btn notif-btn-accept" onClick={() => handleIncomingRespond(n.id, true)}>✓ {t('accepter')}</button>
                           <button className="notif-btn notif-btn-reject" onClick={() => handleIncomingRespond(n.id, false)}>✕ {t('refuser')}</button>
+                          <button className="notif-btn" onClick={() => handleHideTransaction(n.id)} style={{ backgroundColor: '#666' }}>🔒 {t('masquer')}</button>
                         </div>
                       </div>
                     </div>
@@ -618,18 +665,34 @@ function Dashboard() {
         </div>
       )}
 
-      {/* Pending Outgoing Modal (simple example, you may keep your own) */}
+      {/* Pending Outgoing Modal */}
       {showPendingModal && (
         <div className="modal-overlay" onClick={() => setShowPendingModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="registry-panel-header"><h3>{t('demandes_attente')}</h3><button className="btn-secondary" onClick={() => setShowPendingModal(false)}>{t('fermer')}</button></div>
-            <div className="transaction-list">{pending.length === 0 ? <p className="text-muted">{t('aucune_demande')}</p> : pending.map(tx => (
-              <div key={tx.id} className="transaction-item">
-                <div className="transaction-header"><span className="transaction-title">{tx.documentSujet}</span><span className="transaction-badge">{t('en_attente')}</span></div>
-                <div className="transaction-details"><span>{t('service_destinataire')} : {tx.destinationServiceNom}</span><span>{t('message')} : {tx.message || t('non_renseigne')}</span><span>{t('envoye_le')} : {formatDate(tx.dateEnvoi)}</span></div>
-                <div className="transaction-actions"><button onClick={() => handleConsult(tx)}>{t('consulter')}</button><button onClick={() => handleCancelOutgoing(tx.id)}>{t('annuler')}</button><button onClick={() => handleHideTransaction(tx.id)}>{t('masquer')}</button></div>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+            <div className="registry-panel-header">
+              <h3>{t('demandes_attente')}</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <HiddenBadgeButton type="pending" />
+                <button className="btn-secondary" onClick={() => setShowPendingModal(false)}>{t('fermer')}</button>
               </div>
-            ))}</div>
+            </div>
+            <div className="transaction-list">
+              {pending.length === 0 ? <p className="text-muted">{t('aucune_demande')}</p> : pending.map(tx => (
+                <div key={tx.id} className="transaction-item">
+                  <div className="transaction-header"><span className="transaction-title">{tx.documentSujet}</span><span className="transaction-badge">{t('en_attente')}</span></div>
+                  <div className="transaction-details">
+                    <span>{t('service_destinataire')} : {tx.destinationServiceNom}</span>
+                    <span>{t('message')} : {tx.message || t('non_renseigne')}</span>
+                    <span>{t('envoye_le')} : {formatDate(tx.dateEnvoi)}</span>
+                  </div>
+                  <div className="transaction-actions">
+                    <button onClick={() => handleConsult(tx)}>{t('consulter')}</button>
+                    <button onClick={() => handleCancelOutgoing(tx.id)}>{t('annuler')}</button>
+                    <button className="btn-hide" onClick={() => handleHideTransaction(tx.id)}>🔒 {t('masquer')}</button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -637,15 +700,31 @@ function Dashboard() {
       {/* Completed Transactions Modal */}
       {showCompletedModal && (
         <div className="modal-overlay" onClick={() => setShowCompletedModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="registry-panel-header"><h3>{t('transactions_traitees')}</h3><button className="btn-secondary" onClick={() => setShowCompletedModal(false)}>{t('fermer')}</button></div>
-            <div className="transaction-list">{completed.length === 0 ? <p className="text-muted">{t('aucune_transaction')}</p> : completed.map(tx => (
-              <div key={tx.id} className="transaction-item">
-                <div className="transaction-header"><span className="transaction-title">{tx.documentSujet}</span><span className="transaction-badge">{translateStatus(tx.statut, t)}</span></div>
-                <div className="transaction-details"><span>{t('service_destinataire')} : {tx.destinationServiceNom}</span><span>{t('message')} : {tx.message || t('non_renseigne')}</span><span>{t('traite_le')} : {formatDate(tx.dateReponse)}</span><span>{t('note')} : {tx.messageReponse || t('non_renseigne')}</span></div>
-                <div className="transaction-actions"><button onClick={() => handleConsult(tx)}>{t('consulter')}</button><button onClick={() => handleHideTransaction(tx.id)}>{t('masquer')}</button></div>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+            <div className="registry-panel-header">
+              <h3>{t('transactions_traitees')}</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <HiddenBadgeButton type="completed" />
+                <button className="btn-secondary" onClick={() => setShowCompletedModal(false)}>{t('fermer')}</button>
               </div>
-            ))}</div>
+            </div>
+            <div className="transaction-list">
+              {completed.length === 0 ? <p className="text-muted">{t('aucune_transaction')}</p> : completed.map(tx => (
+                <div key={tx.id} className="transaction-item">
+                  <div className="transaction-header"><span className="transaction-title">{tx.documentSujet}</span><span className="transaction-badge">{translateStatus(tx.statut, t)}</span></div>
+                  <div className="transaction-details">
+                    <span>{t('service_destinataire')} : {tx.destinationServiceNom}</span>
+                    <span>{t('message')} : {tx.message || t('non_renseigne')}</span>
+                    <span>{t('traite_le')} : {formatDate(tx.dateReponse)}</span>
+                    <span>{t('note')} : {tx.messageReponse || t('non_renseigne')}</span>
+                  </div>
+                  <div className="transaction-actions">
+                    <button onClick={() => handleConsult(tx)}>{t('consulter')}</button>
+                    <button className="btn-hide" onClick={() => handleHideTransaction(tx.id)}>🔒 {t('masquer')}</button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -653,47 +732,49 @@ function Dashboard() {
       {/* Pending Returns Modal */}
       {showReturnsModal && (
         <div className="modal-overlay" onClick={() => setShowReturnsModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="registry-panel-header"><h3>{t('documents_retourner')}</h3><button className="btn-secondary" onClick={() => setShowReturnsModal(false)}>{t('fermer')}</button></div>
-            <div className="transaction-list">{pendingReturns.length === 0 ? <p className="text-muted">{t('aucun_document_retour')}</p> : pendingReturns.map(tx => {
-              const isConsultant = isConsultantTransaction(tx);
-              return (
-                <div key={tx.id} className="transaction-item">
-                  <div className="transaction-header"><span className="transaction-title">{tx.documentSujet}</span><span className="transaction-badge">{t('en_attente_retour')}</span></div>
-                  <div className="transaction-details"><span>{t('service_destinataire')} : {tx.destinationServiceNom}</span><span>{t('message')} : {tx.message || t('non_renseigne')}</span><span>{t('envoye_le')} : {formatDate(tx.dateEnvoi)}</span></div>
-                  <div className="transaction-actions"><button onClick={() => handleConsult(tx)}>{t('consulter')}</button>{isConsultant && <button onClick={() => handleMarkReturned(tx.id)}>{t('marquer_retourne')}</button>}<button onClick={() => handleHideTransaction(tx.id)}>{t('masquer')}</button></div>
-                </div>
-              );
-            })}</div>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+            <div className="registry-panel-header">
+              <h3>{t('documents_retourner')}</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <HiddenBadgeButton type="returns" />
+                <button className="btn-secondary" onClick={() => setShowReturnsModal(false)}>{t('fermer')}</button>
+              </div>
+            </div>
+            <div className="transaction-list">
+              {pendingReturns.length === 0 ? <p className="text-muted">{t('aucun_document_retour')}</p> : pendingReturns.map(tx => {
+                const isConsultant = isConsultantTransaction(tx);
+                return (
+                  <div key={tx.id} className="transaction-item">
+                    <div className="transaction-header"><span className="transaction-title">{tx.documentSujet}</span><span className="transaction-badge">{t('en_attente_retour')}</span></div>
+                    <div className="transaction-details">
+                      <span>{t('service_destinataire')} : {tx.destinationServiceNom}</span>
+                      <span>{t('message')} : {tx.message || t('non_renseigne')}</span>
+                      <span>{t('envoye_le')} : {formatDate(tx.dateEnvoi)}</span>
+                    </div>
+                    <div className="transaction-actions">
+                      <button onClick={() => handleConsult(tx)}>{t('consulter')}</button>
+                      {isConsultant && <button onClick={() => handleMarkReturned(tx.id)}>{t('marquer_retourne')}</button>}
+                      <button className="btn-hide" onClick={() => handleHideTransaction(tx.id)}>🔒 {t('masquer')}</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Restore Hidden Modal */}
-      {showRestoreModal && (
-        <div className="modal-overlay" onClick={() => setShowRestoreModal(false)}>
-          <div className="modal" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
-            <div className="registry-panel-header">
-              <h3>{t('transactions_masquees')}</h3>
-              <button className="btn-secondary" onClick={() => setShowRestoreModal(false)}>{t('fermer')}</button>
-            </div>
-            {hiddenItemsDetails.length === 0 ? (
-              <p className="text-muted">{t('aucune_masquee')}</p>
-            ) : (
-              <>
-                <div className="transaction-list">
-                  {hiddenItemsDetails.map(item => (
-                    <div key={item.id} className="transaction-item">
-                      <div className="transaction-header"><span className="transaction-title">{item.title}</span><span className="transaction-badge">{t('masquee')}</span></div>
-                      <div className="transaction-actions"><button className="btn-primary" onClick={() => handleRestore(item.id)}>{t('restaurer')}</button></div>
-                    </div>
-                  ))}
-                </div>
-                <div className="form-actions" style={{ marginTop: '1rem' }}><button className="btn-primary" onClick={handleRestoreAll}>{t('restaurer_tout')}</button></div>
-              </>
-            )}
-          </div>
-        </div>
+      {/* ── Hidden Popup (renders on top of all modals) ── */}
+      {showHiddenPopup && (
+        <HiddenPopup
+          items={hiddenItemsDetails.filter(i => i.type === showHiddenPopup)}
+          searchValue={hiddenSearches[showHiddenPopup]}
+          onSearchChange={(val) => setHiddenSearches(prev => ({ ...prev, [showHiddenPopup]: val }))}
+          onRestore={(id) => { handleRestore(id); }}
+          onClose={closeHiddenPopup}
+          t={t}
+          formatDate={formatDate}
+        />
       )}
 
       {/* Transfer Choice Modal */}

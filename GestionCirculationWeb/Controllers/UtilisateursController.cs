@@ -96,6 +96,10 @@ namespace GestionCourrier.Controllers
             var user = await _context.Utilisateurs.FindAsync(id);
             if (user == null) return NotFound();
 
+            // Prevent password change for Admin role
+            if (!string.IsNullOrWhiteSpace(dto.Password) && user.Role == "Admin")
+                return BadRequest("Le mot de passe de l'administrateur ne peut pas être modifié.");
+
             var oldSubstituteId = user.SubstituteUserId;
 
             if (dto.NomComplet != null) user.NomComplet = dto.NomComplet;

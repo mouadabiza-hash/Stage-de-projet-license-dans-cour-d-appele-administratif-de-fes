@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
+import { useModal } from '../context/ModalContext';
 import { usePermissions } from '../hooks/usePermissions';
 import DocumentModal from '../components/DocumentModal';
 import SearchableSelect from './SearchableSelect';
@@ -12,6 +13,7 @@ const TYPE_SORTANT = 'sortant';
 
 function GestionCourriers() {
   const { t, i18n } = useTranslation();
+  const { showConfirm, showAlert } = useModal();
   const locale = i18n.language;
   const { user } = useAuth();
   const perms = usePermissions();
@@ -293,9 +295,8 @@ const fetchData = useCallback(async () => {
 
   const filtered = useMemo(() => {
     let docs = mainDocs;
-    if (filterMode === 'without') docs = docs.filter(d => !d.idBureauOrdre || d.idBureauOrdre.trim() === '');
-    else if (filterMode === 'with') docs = docs.filter(d => d.idBureauOrdre && d.idBureauOrdre.trim() !== '');
-
+    
+    // Apply search filter first (across ALL documents)
     if (search.trim()) {
       const kw = search.toLowerCase();
       docs = docs.filter(d =>
@@ -305,6 +306,9 @@ const fetchData = useCallback(async () => {
         (d.destinataire || '').toLowerCase().includes(kw)
       );
     }
+    
+    // Registry displays only entities WITH idBureauOrdre (bureau order ID)
+    docs = docs.filter(d => d.idBureauOrdre && d.idBureauOrdre.trim() !== '');
 
     return [...docs].sort((a, b) => {
       const getNum = (val) => {
@@ -490,14 +494,23 @@ const fetchData = useCallback(async () => {
       dateArrivee: doc.date ? doc.date.slice(0, 10) : '',
       numeroDossier: doc.numeroDossier || '',
       linkedDocumentType: doc.linkedDocumentType || '',
-      linkedDocumentSource: doc.linkedDocumentSource || ''   // using dedicated field
+      linkedDocumentSource: doc.linkedDocumentSource || ''
     });
-    window.scrollTo({ top: 0 });
+    // Scroll to form with smooth animation
+    setTimeout(() => {
+      const formCard = document.querySelector('.form-card');
+      if (formCard) {
+        formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 100);
   };
 
   const handleDelete = async (id, typeDoc) => {
     if (!perms.canDelete) return;
-    if (!window.confirm(t('confirmation_supprimer'))) return;
+    const confirmed = await showConfirm(t('confirmation_supprimer'), null, t('confirmation'), true);
+    if (!confirmed) return;
     try {
       if (typeDoc === 'Judiciaire') await axios.delete(`/api/acteursjudiciaires/${id}`);
       else await axios.delete(`/api/courriers/${id}`);
@@ -958,7 +971,7 @@ const startEditingReply = () => {
       const data = res.data;
       let message = `✅ ${data.imported} ${t('import_succes', { count: data.imported })}`;
       if (data.errors?.length) message += `\n\n⚠️ ${t('details_erreurs')}:\n${data.errors.join('\n')}`;
-      alert(message);
+      showAlert(message, t('import_result'));
       if (data.imported > 0) fetchData();
       setShowMappingModal(false);
       setImportFile(null);
@@ -1027,8 +1040,12 @@ const linkedDocOpts = linkedDocTypes.map(ld => ({ value: ld.code, label: locale 
       {((tab === TYPE_ADMINISTRATIF && perms.canCreateAdministratif) ||
         (tab === TYPE_JUDICIAIRE && (perms.canCreateJuridique || perms.canCreateLinked)) ||
         (tab === TYPE_SORTANT && perms.canCreateAdministratif)) && (
-        <div className="form-card">
-          <h3>{editingId ? t('modifier') : t('ajouter')} – {t(tab)}</h3>
+        <div className="form-card" style={editingId ? { 
+          borderLeft: '4px solid #f59e0b',
+          backgroundColor: '#fffbf0',
+          boxShadow: '0 4px 12px rgba(245, 158, 11, 0.15)'
+        } : {}}>
+          <h3>{editingId ? `✏️ ${t('modifier')}` : t('ajouter')} – {t(tab)}</h3>
           <form onSubmit={handleSubmit}>
             {tab === TYPE_JUDICIAIRE && (
               <div className="registry-choice sub-choice" style={{ marginBottom: '1.5rem' }}>
@@ -1279,8 +1296,21 @@ const linkedDocOpts = linkedDocTypes.map(ld => ({ value: ld.code, label: locale 
             <button className="btn-secondary" onClick={() => setShowColumnMenu(!showColumnMenu)}>📋 {t('colonnes')}</button>
             <input type="text" placeholder={t('rechercher_par_mot')} value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{ flex: 1, minWidth: '180px', maxWidth: '300px', padding: '0.4rem 0.75rem' }}
-              className="form-input" />
+              style={{ 
+                flex: 1, 
+                minWidth: '200px', 
+                maxWidth: '400px', 
+                padding: '0.6rem 1rem', 
+                borderRadius: '8px',
+                border: '2px solid #e2e8f0',
+                fontSize: '1rem',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+              }}
+              className="form-input"
+              onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+              onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
+            />
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#f8f9fc', padding: '0.2rem 0.6rem', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
               <span>{t('afficher')}</span>
               <select value={rowsPerPage} onChange={e => { setRowsPerPage(Number(e.target.value)); setPage(1); }}

@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
+import { useModal } from '../context/ModalContext';
 
 function TransactionsOutgoing() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
+  const { showAlert } = useModal();
   const locale = i18n.resolvedLanguage?.startsWith('ar') ? 'ar-MA' : 'fr-FR';
   const isAdmin = user?.role === 'Admin';
 
@@ -116,7 +118,7 @@ function TransactionsOutgoing() {
 
   const exportSelectedTransactions = async () => {
     if (selectedIds.length === 0) {
-      alert(t('selection_requise'));
+      showAlert(t('selection_requise'), t('attention'));
       return;
     }
     try {

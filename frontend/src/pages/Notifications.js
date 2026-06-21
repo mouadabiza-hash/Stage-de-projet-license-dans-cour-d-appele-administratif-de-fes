@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
+import { useModal } from '../context/ModalContext';
 
 function Notifications() {
   const { t } = useTranslation();
+  const { showAlert } = useModal();
   const [notifications, setNotifications] = useState([]);
   const [responseMsg, setResponseMsg] = useState({});
   const [selectedIds, setSelectedIds] = useState([]);
@@ -89,7 +91,7 @@ function Notifications() {
       } catch { fail++; }
     }
     const label = accepte ? t('acceptees') : t('refusees');
-    alert(`${ok} ${label}${fail > 0 ? ` (${fail} ${t('echecs')})` : ''}`);
+    showAlert(`${ok} ${label}${fail > 0 ? ` (${fail} ${t('echecs')})` : ''}`, accepte ? t('succes') : t('attention'));
     setBulkLoading(false);
     fetchNotifications();
   };

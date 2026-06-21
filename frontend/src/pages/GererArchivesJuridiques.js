@@ -2,9 +2,11 @@ import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { useTranslation } from "react-i18next";
 import { usePermissions } from '../hooks/usePermissions';
+import { useModal } from '../context/ModalContext';
 
 function GererArchivesJuridiques() {
   const { t, i18n } = useTranslation();
+  const { showAlert, showConfirm } = useModal();
   const locale = i18n.language;
   const perms = usePermissions();
   const canManageRetraits = perms.canArchive;
@@ -163,7 +165,8 @@ function GererArchivesJuridiques() {
 
   const handleCancelRetrait = async (retraitId) => {
     if (!canManageRetraits) return;
-    if (!window.confirm(t("confirmation_annuler_retrait") || "Annuler ce retrait ?")) return;
+    const confirmed = await showConfirm(t("confirmation_annuler_retrait") || "Annuler ce retrait ?", null, t("confirmation"), true);
+    if (!confirmed) return;
     try {
       await axios.delete(`/api/acteursjudiciaires/retraits/${retraitId}`);
       setPanelSuccess(t("retrait_annule") || "Retrait annulé");
@@ -215,7 +218,7 @@ function GererArchivesJuridiques() {
     let msg = `${data.archived} dossier(s) archivé(s).`;
     if (data.errors?.length > 0)
       msg += `\n\n${t('details_erreurs')} :\n${data.errors.join('\n')}`;
-    alert(msg);
+    showAlert(msg, data.errors?.length > 0 ? t('attention') : t('succes'));
     if (data.archived > 0) fetchArchives();
     setShowMapping(false);
     setImportFile(null);

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
+import { useModal } from '../context/ModalContext';
 
 function GestionListes() {
   const { t, i18n } = useTranslation();
@@ -81,8 +82,11 @@ function GestionListes() {
     }
   };
 
+  const { showConfirm } = useModal();
+
   const handleDelete = async (id) => {
-    if (window.confirm(t('confirmation_supprimer'))) {
+    const confirmed = await showConfirm(t('confirmation_supprimer'), null, t('confirmation'), true);
+    if (confirmed) {
       try {
         await axios.delete(`/api/ListItems/${id}`);
         setSuccess(t('suppression_succes'));

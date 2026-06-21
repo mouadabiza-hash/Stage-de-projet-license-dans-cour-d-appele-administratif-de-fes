@@ -2,10 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../hooks/usePermissions';
+import { useModal } from '../context/ModalContext';
 import SearchableSelect from './SearchableSelect';
 
 function GererEquipements() {
   const { t, i18n } = useTranslation();
+  const { showAlert, showConfirm } = useModal();
   const locale = i18n.language;
   const perms = usePermissions();
 
@@ -14,6 +16,7 @@ function GererEquipements() {
   const [form, setForm] = useState({ serial: '', type: '', etat: '', idService: '', additionalInfo: '' });
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterEtat, setFilterEtat] = useState('');
@@ -106,9 +109,12 @@ function GererEquipements() {
     try {
       if (editingId) {
         await axios.put(`/api/equipements/${editingId}`, payload);
+        setSuccess(t('equipement_modifie_succes') || 'Équipement modifié avec succès');
       } else {
         await axios.post('/api/equipements', payload);
+        setSuccess(t('equipement_ajoute_succes') || 'Équipement ajouté avec succès');
       }
+      setTimeout(() => setSuccess(''), 3000);
       resetForm();
       fetchEquipements();
     } catch (err) {
@@ -127,17 +133,24 @@ function GererEquipements() {
     });
   };
   const handleDelete = async (id) => {
-    if (window.confirm(t('confirmation_supprimer'))) {
+    const confirmed = await showConfirm(t('confirmation_supprimer'), null, t('confirmation'), true);
+    if (confirmed) {
       await axios.delete(`/api/equipements/${id}`);
+      setSuccess(t('equipement_supprime_succes') || 'Équipement supprimé avec succès');
+      setTimeout(() => setSuccess(''), 3000);
       fetchEquipements();
     }
   };
   const handleCharger = async (id) => {
     await axios.post(`/api/equipements/${id}/charger`);
+    setSuccess(t('equipement_charge_succes') || 'Équipement chargé avec succès');
+    setTimeout(() => setSuccess(''), 3000);
     fetchEquipements();
   };
   const handleDecharger = async (id) => {
     await axios.post(`/api/equipements/${id}/decharger`);
+    setSuccess(t('equipement_decharge_succes') || 'Équipement déchargé avec succès');
+    setTimeout(() => setSuccess(''), 3000);
     fetchEquipements();
   };
   const resetForm = () => {
@@ -193,9 +206,9 @@ function GererEquipements() {
       const data = res.data;
       if (data.details && data.details.length > 0) {
         let msg = `${data.message}\n\n${t('details_erreurs')} :\n${data.details.join('\n')}`;
-        alert(msg);
+        showAlert(msg, t('attention'));
       } else {
-        alert(data.message);
+        showAlert(data.message, t('succes'));
       }
       if (data.imported > 0) {
         fetchEquipements();
@@ -233,6 +246,7 @@ function GererEquipements() {
     <div className="page-container">
       <h1 className="page-title">{t('gerer_equipements')}</h1>
       {error && <div className="error-message">{error}</div>}
+      {success && <div className="success-message">{success}</div>}
       <div className="filters">
         <input type="text" placeholder={t('rechercher_equipement')} value={search} onChange={e => setSearch(e.target.value)} className="form-input" />
         <SearchableSelect
