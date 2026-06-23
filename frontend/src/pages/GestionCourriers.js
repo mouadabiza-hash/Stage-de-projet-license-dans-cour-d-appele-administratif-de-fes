@@ -1074,7 +1074,7 @@ const linkedDocOpts = linkedDocTypes.map(ld => ({ value: ld.code, label: locale 
               {tab === TYPE_JUDICIAIRE && userRole !== 'Greffier' && judMode !== 'linked' && perms.canCreateJuridique && (
                 <div className="form-field">
                   <label>{t('numero_dossier_judiciaire') || 'رقم الاستئنافي'}</label>
-                  <input type="text" name="numeroDossier" value={form.numeroDossier} onChange={handleChange} placeholder="2026/15/3" className="form-input" />
+                  <input type="text" name="numeroDossier" value={form.numeroDossier} onChange={handleChange} placeholder="2026/7200/1" className="form-input" />
                 </div>
               )}
 
@@ -1201,7 +1201,7 @@ const linkedDocOpts = linkedDocTypes.map(ld => ({ value: ld.code, label: locale 
                 <>
                   <div className="form-field">
                     <label>{t('numero_premiere_instance') || 'الرقم الابتدائي'}</label>
-                    <input name="numeroPremiereInstance" value={form.numeroPremiereInstance} onChange={handleChange} placeholder="2026/12" className="form-input" />
+                    <input name="numeroPremiereInstance" value={form.numeroPremiereInstance} onChange={handleChange} placeholder="2026/7200/1" className="form-input" />
                   </div>
                   <div className="form-field">
                     <label>{t('type_judiciaire') || 'النوع'}</label>
