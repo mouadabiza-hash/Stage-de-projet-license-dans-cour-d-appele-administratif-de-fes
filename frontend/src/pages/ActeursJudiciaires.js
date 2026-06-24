@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import DocumentModal from '../components/DocumentModal';
-import SearchableSelect from './SearchableSelect'; // new custom combobox
+import SearchableSelect from './SearchableSelect';
 
 function ActeursJudiciaires() {
   const { t, i18n } = useTranslation();
@@ -11,15 +11,15 @@ function ActeursJudiciaires() {
   const { user } = useAuth();
   const role = user?.role;
 
-  // Column visibility
   const showBureauOrdre = role === 'Admin' || role === 'Greffier';
   const showNumeroDossier = role !== 'Greffier';
 
+  const [allItems, setAllItems] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [initialLoad, setInitialLoad] = useState(true);
 
-  // Search state
   const [search, setSearch] = useState({
     numeroDossier: '',
     numeroPremiereInstance: '',
@@ -30,10 +30,7 @@ function ActeursJudiciaires() {
     dateFin: ''
   });
 
-  // Dynamic document states from ListItems
   const [documentStates, setDocumentStates] = useState([]);
-
-  // Document consultation
   const [showDocModal, setShowDocModal] = useState(false);
   const [currentDocument, setCurrentDocument] = useState(null);
 
@@ -50,49 +47,97 @@ function ActeursJudiciaires() {
     fetchStates();
   }, []);
 
+  // Charger tous les éléments au montage
   useEffect(() => {
-    fetchItems();
+    fetchAllItems();
+  }, []);
+
+  // Filtrer quand la recherche change
+  useEffect(() => {
+    if (!initialLoad) {
+      applyFilters();
+    }
   }, [search]);
 
-  const buildQuery = () => {
-    const parts = [];
-    if (search.numeroDossier) parts.push(search.numeroDossier);
-    if (search.numeroPremiereInstance) parts.push(search.numeroPremiereInstance);
-    if (search.tribunalSource) parts.push(search.tribunalSource);
-    if (search.sujet) parts.push(search.sujet);
-    if (search.etat) parts.push(search.etat);
-    return parts.join(' ');
-  };
-
-  const fetchItems = async () => {
+  const fetchAllItems = async () => {
     setLoading(true);
+    setError('');
     try {
-      const motCle = buildQuery();
-      const url = motCle
-        ? `/api/acteursjudiciaires/search?motCle=${encodeURIComponent(motCle)}`
-        : '/api/acteursjudiciaires/search';
-
-      const res = await axios.get(url);
-      let data = res.data;
-
-      // Frontend date filtering
-      if (search.dateDebut || search.dateFin) {
-        const debut = search.dateDebut ? new Date(search.dateDebut) : null;
-        const fin = search.dateFin ? new Date(search.dateFin) : null;
-        data = data.filter(item => {
-          const itemDate = new Date(item.date);
-          if (debut && itemDate < debut) return false;
-          if (fin && itemDate > new Date(fin).setHours(23, 59, 59, 999)) return false;
-          return true;
-        });
-      }
-
-      setItems(data);
-      setError('');
+      const res = await axios.get('/api/acteursjudiciaires/search');
+      setAllItems(res.data);
+      setItems(res.data);
+      setInitialLoad(false);
     } catch (err) {
       setError(getErrorMessage(err, t('erreur_chargement')));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const applyFilters = () => {
+    let filtered = [...allItems];
+
+    // Filtrer par numéro de dossier
+    if (search.numeroDossier.trim()) {
+      const term = search.numeroDossier.trim().toLowerCase();
+      filtered = filtered.filter(item => 
+        item.numeroDossier && item.numeroDossier.toLowerCase().includes(term)
+      );
+    }
+
+    // Filtrer par numéro de première instance
+    if (search.numeroPremiereInstance.trim()) {
+      const term = search.numeroPremiereInstance.trim().toLowerCase();
+      filtered = filtered.filter(item => 
+        item.numeroPremiereInstance && item.numeroPremiereInstance.toLowerCase().includes(term)
+      );
+    }
+
+    // Filtrer par tribunal source
+    if (search.tribunalSource.trim()) {
+      const term = search.tribunalSource.trim().toLowerCase();
+      filtered = filtered.filter(item => 
+        item.tribunalSource && item.tribunalSource.toLowerCase().includes(term)
+      );
+    }
+
+    // Filtrer par sujet
+    if (search.sujet.trim()) {
+      const term = search.sujet.trim().toLowerCase();
+      filtered = filtered.filter(item => 
+        item.sujet && item.sujet.toLowerCase().includes(term)
+      );
+    }
+
+    // Filtrer par état
+    if (search.etat.trim()) {
+      filtered = filtered.filter(item => item.etatArchive === search.etat.trim());
+    }
+
+    // Filtrer par date
+    if (search.dateDebut) {
+      const debut = new Date(search.dateDebut);
+      debut.setHours(0, 0, 0, 0);
+      filtered = filtered.filter(item => {
+        const itemDate = new Date(item.date);
+        return itemDate >= debut;
+      });
+    }
+    if (search.dateFin) {
+      const fin = new Date(search.dateFin);
+      fin.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(item => {
+        const itemDate = new Date(item.date);
+        return itemDate <= fin;
+      });
+    }
+
+    setItems(filtered);
+    
+    if (filtered.length === 0 && Object.values(search).some(v => v)) {
+      setError(t('aucun_element_judiciaire') || 'Aucun dossier trouvé pour cette recherche.');
+    } else {
+      setError('');
     }
   };
 
@@ -116,16 +161,16 @@ function ActeursJudiciaires() {
       dateDebut: '',
       dateFin: ''
     });
+    setItems(allItems);
+    setError('');
   };
 
-  // Helper to get display value for état
   const getEtatDisplay = (etatCode) => {
     const state = documentStates.find(s => s.code === etatCode);
     if (!state) return etatCode || '-';
     return locale === 'ar' ? state.valueAr : state.valueFr;
   };
 
-  // Prepare options for the "etat" SearchableSelect
   const etatOptions = documentStates.map(state => ({
     value: state.code,
     label: locale === 'ar' ? state.valueAr : state.valueFr
@@ -136,7 +181,6 @@ function ActeursJudiciaires() {
       <h1 className="page-title">{t('menu_acteurs_judiciaires') || 'السجل القضائي'}</h1>
       {error && <div className="error-message">{error}</div>}
 
-      {/* Advanced search panel */}
       <div className="form-card" style={{ marginBottom: '1.5rem' }}>
         <h3>{t('recherche_avancee') || 'بحث متقدم'}</h3>
         <div className="form-grid">
@@ -175,7 +219,6 @@ function ActeursJudiciaires() {
             />
           </div>
 
-          {/* REPLACED native select with SearchableSelect */}
           <div className="form-field">
             <label>{t('etat') || 'الحالة'}</label>
             <SearchableSelect
@@ -207,12 +250,11 @@ function ActeursJudiciaires() {
           </div>
         </div>
         <div className="form-actions">
-          <button className="btn-primary" onClick={fetchItems}>{t('search') || 'بحث'}</button>
+          <button className="btn-primary" onClick={applyFilters}>{t('search') || 'بحث'}</button>
           <button className="btn-secondary" onClick={resetSearch}>{t('reinitialiser')}</button>
         </div>
       </div>
 
-      {/* Results table – unchanged */}
       <div className="data-table-wrapper">
         <table className="modern-table">
           <thead>

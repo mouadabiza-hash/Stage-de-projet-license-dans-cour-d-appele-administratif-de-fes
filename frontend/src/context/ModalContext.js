@@ -1,72 +1,84 @@
-import React, { createContext, useState, useCallback } from 'react';
-import AlertModal from '../components/AlertModal';
-import ConfirmModal from '../components/ConfirmModal';
+// ModalContext.js
+import React, { createContext, useContext, useState } from 'react';
 
-export const ModalContext = createContext();
+const ModalContext = createContext();
 
-export function ModalProvider({ children }) {
-  const [alert, setAlert] = useState({ isOpen: false, title: '', message: '', type: 'info' });
-  const [confirm, setConfirm] = useState({
+export const useModal = () => {
+  const context = useContext(ModalContext);
+  if (!context) {
+    throw new Error('useModal must be used within ModalProvider');
+  }
+  return context;
+};
+
+export const ModalProvider = ({ children }) => {
+  const [modalState, setModalState] = useState({
     isOpen: false,
     title: '',
     message: '',
-    isDangerous: false,
+    confirmText: 'Confirmer',
+    cancelText: 'Annuler',
     onConfirm: null,
     onCancel: null,
   });
 
-  const showAlert = useCallback((message, title = 'Information', type = 'info') => {
-    setAlert({ isOpen: true, title, message, type });
-  }, []);
-
-  const closeAlert = useCallback(() => {
-    setAlert({ ...alert, isOpen: false });
-  }, [alert]);
-
-  const showConfirm = useCallback((message, onConfirm, title = 'Confirmation', isDangerous = false) => {
+  // 🔥 VERSION CORRIGÉE DE showConfirm
+  const showConfirm = (message, onConfirm, title = 'Confirmation', showCancel = true) => {
     return new Promise((resolve) => {
-      setConfirm({
+      setModalState({
         isOpen: true,
         title,
         message,
-        isDangerous,
+        confirmText: 'Confirmer',
+        cancelText: showCancel ? 'Annuler' : '',
         onConfirm: () => {
+          if (onConfirm) onConfirm();
           resolve(true);
-          onConfirm?.();
-          setConfirm((prev) => ({ ...prev, isOpen: false }));
+          closeModal();
         },
         onCancel: () => {
           resolve(false);
-          setConfirm((prev) => ({ ...prev, isOpen: false }));
+          closeModal();
         },
       });
     });
-  }, []);
+  };
 
-  const closeConfirm = useCallback(() => {
-    confirm.onCancel?.();
-  }, [confirm]);
+  const closeModal = () => {
+    setModalState(prev => ({ ...prev, isOpen: false }));
+  };
+
+  const ModalComponent = () => {
+    if (!modalState.isOpen) return null;
+    
+    return (
+      <div className="modal-overlay" onClick={closeModal}>
+        <div className="modal" style={{ maxWidth: '450px' }} onClick={e => e.stopPropagation()}>
+          <div className="registry-panel-header">
+            <h3>{modalState.title}</h3>
+            <button className="btn-secondary" onClick={closeModal}>Fermer</button>
+          </div>
+          <div style={{ padding: '1rem', textAlign: 'center' }}>
+            <p style={{ fontSize: '1rem', marginBottom: '1.5rem' }}>{modalState.message}</p>
+          </div>
+          <div className="form-actions" style={{ justifyContent: 'center', gap: '1rem' }}>
+            <button className="btn-primary" onClick={modalState.onConfirm}>
+              {modalState.confirmText}
+            </button>
+            {modalState.cancelText && (
+              <button className="btn-secondary" onClick={closeModal}>
+                {modalState.cancelText}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <ModalContext.Provider value={{ showAlert, closeAlert, showConfirm, closeConfirm }}>
+    <ModalContext.Provider value={{ showConfirm, ModalComponent }}>
       {children}
-      <AlertModal
-        isOpen={alert.isOpen}
-        title={alert.title}
-        message={alert.message}
-        type={alert.type}
-        onClose={closeAlert}
-      />
-      <ConfirmModal
-        isOpen={confirm.isOpen}
-        title={confirm.title}
-        message={confirm.message}
-        isDangerous={confirm.isDangerous}
-        onConfirm={confirm.onConfirm}
-        onCancel={confirm.onCancel}
-      />
     </ModalContext.Provider>
   );
-}
-
-export const useModal = () => React.useContext(ModalContext);
+};

@@ -44,6 +44,7 @@ namespace GestionCourrier.Controllers
             var item = await BaseQuery().FirstOrDefaultAsync(e => e.Id == id);
             return item == null ? NotFound() : Ok(ToResponse(item));
         }
+
         [HttpGet("{id}/retraits")]
 public async Task<IActionResult> GetRetraitsByDocument(int id)
 {
@@ -62,24 +63,36 @@ public async Task<IActionResult> GetRetraitsByDocument(int id)
     }));
 }
 
-        [HttpGet("archives")]
-        public async Task<IActionResult> GetArchives([FromQuery] string? motCle)
-        {
-            var query = BaseQuery().Where(e => e.EstArchive || e.EtatArchive == "Archive");
-            if (!string.IsNullOrWhiteSpace(motCle))
-            {
-                var keyword = motCle.Trim();
-                query = query.Where(e =>
-                    (e.IdBureauOrdre != null && e.IdBureauOrdre.Contains(keyword)) ||
-                    (e.NumeroDossier != null && (e.NumeroDossier.Annee.ToString().Contains(keyword) || e.NumeroDossier.Nombre.ToString().Contains(keyword) || e.NumeroDossier.NumeroSujet.ToString().Contains(keyword))) ||
-                    e.TribunalSource.Contains(keyword) || e.Sujet.Contains(keyword) || e.Destinataire.Contains(keyword) ||
-                    e.Description.Contains(keyword) || e.Direction.Contains(keyword) || e.EtatArchive.Contains(keyword) ||
-                    e.Emplacement.Contains(keyword) || (e.Cabinet != null && e.Cabinet.Contains(keyword)) ||
-                    (e.NumeroPremiereInstance != null && e.NumeroPremiereInstance.Contains(keyword)));
-            }
-            var items = await query.OrderByDescending(e => e.DateArchivage).ThenByDescending(e => e.Id).ToListAsync();
-            return Ok(items.Select(ToResponse));
-        }
+[HttpGet("archives")]
+public async Task<IActionResult> GetArchives([FromQuery] string? motCle)
+{
+    var query = BaseQuery().Where(e => e.EstArchive || e.EtatArchive == "Archive");
+    if (!string.IsNullOrWhiteSpace(motCle))
+    {
+        var keyword = motCle.Trim();
+        query = query.Where(e =>
+            (e.IdBureauOrdre != null && e.IdBureauOrdre.Contains(keyword)) ||
+            (e.NumeroDossier != null && 
+                (e.NumeroDossier.Annee.ToString().Contains(keyword) || 
+                 e.NumeroDossier.Nombre.ToString().Contains(keyword) || 
+                 e.NumeroDossier.NumeroSujet.ToString().Contains(keyword))) ||
+            (e.NumeroDossier != null && 
+                (e.NumeroDossier.Annee.ToString() + "/" + 
+                 e.NumeroDossier.Nombre.ToString() + "/" + 
+                 e.NumeroDossier.NumeroSujet.ToString()).Contains(keyword)) ||
+            e.TribunalSource.Contains(keyword) || 
+            e.Sujet.Contains(keyword) || 
+            e.Destinataire.Contains(keyword) ||
+            e.Description.Contains(keyword) || 
+            e.Direction.Contains(keyword) || 
+            e.EtatArchive.Contains(keyword) ||
+            e.Emplacement.Contains(keyword) || 
+            (e.Cabinet != null && e.Cabinet.Contains(keyword)) ||
+            (e.NumeroPremiereInstance != null && e.NumeroPremiereInstance.Contains(keyword)));
+    }
+    var items = await query.OrderByDescending(e => e.DateArchivage).ThenByDescending(e => e.Id).ToListAsync();
+    return Ok(items.Select(ToResponse));
+}
 
         [HttpPost]
         public async Task<IActionResult> Create(CourrierJudiciaireRequest request)
@@ -490,24 +503,120 @@ public async Task<IActionResult> ImportArchiveExecute(
             return Ok(new { lienPdf = $"/uploads/documents/{fileName}" });
         }
 
-        [HttpGet("search")]
-        public async Task<IActionResult> Search([FromQuery] string? motCle)
+[HttpGet("search")]
+public async Task<IActionResult> Search([FromQuery] string? motCle)
+{
+    var query = BaseQuery();
+    if (!string.IsNullOrWhiteSpace(motCle))
+    {
+        var keyword = motCle.Trim();
+        query = query.Where(e =>
+            (e.IdBureauOrdre != null && e.IdBureauOrdre.Contains(keyword)) ||
+            (e.NumeroDossier != null && 
+                (e.NumeroDossier.Annee.ToString().Contains(keyword) || 
+                 e.NumeroDossier.Nombre.ToString().Contains(keyword) || 
+                 e.NumeroDossier.NumeroSujet.ToString().Contains(keyword))) ||
+            (e.NumeroDossier != null && 
+                (e.NumeroDossier.Annee.ToString() + "/" + 
+                 e.NumeroDossier.Nombre.ToString() + "/" + 
+                 e.NumeroDossier.NumeroSujet.ToString()).Contains(keyword)) ||
+            e.TribunalSource.Contains(keyword) || 
+            e.Sujet.Contains(keyword) || 
+            e.Destinataire.Contains(keyword) ||
+            e.Description.Contains(keyword) || 
+            e.Direction.Contains(keyword) || 
+            e.EtatArchive.Contains(keyword) ||
+            e.Emplacement.Contains(keyword) || 
+            (e.Cabinet != null && e.Cabinet.Contains(keyword)) ||
+            (e.NumeroPremiereInstance != null && e.NumeroPremiereInstance.Contains(keyword)));
+    }
+    var items = await query.OrderByDescending(e => e.DateArchivage).ThenByDescending(e => e.Id).ToListAsync();
+    return Ok(items.Select(ToResponse));
+}
+[HttpGet("advanced-search")]
+public async Task<IActionResult> AdvancedSearch(
+    [FromQuery] string? numeroDossier,
+    [FromQuery] string? numeroPremiereInstance,
+    [FromQuery] string? tribunalSource,
+    [FromQuery] string? sujet,
+    [FromQuery] string? etat,
+    [FromQuery] DateTime? dateDebut,
+    [FromQuery] DateTime? dateFin)
+{
+    var query = BaseQuery();
+
+    // Filtrer par numéro de dossier (format: 2026/15/3)
+    if (!string.IsNullOrWhiteSpace(numeroDossier))
+    {
+        var parts = numeroDossier.Trim().Split('/');
+        if (parts.Length == 3)
         {
-            var query = BaseQuery();
-            if (!string.IsNullOrWhiteSpace(motCle))
+            if (int.TryParse(parts[0], out int annee) &&
+                int.TryParse(parts[1], out int nombre) &&
+                int.TryParse(parts[2], out int numeroSujet))
             {
-                var keyword = motCle.Trim();
-                query = query.Where(e =>
-                    (e.IdBureauOrdre != null && e.IdBureauOrdre.Contains(keyword)) ||
-                    (e.NumeroDossier != null && (e.NumeroDossier.Annee.ToString().Contains(keyword) || e.NumeroDossier.Nombre.ToString().Contains(keyword) || e.NumeroDossier.NumeroSujet.ToString().Contains(keyword))) ||
-                    e.TribunalSource.Contains(keyword) || e.Sujet.Contains(keyword) || e.Destinataire.Contains(keyword) ||
-                    e.Description.Contains(keyword) || e.Direction.Contains(keyword) || e.EtatArchive.Contains(keyword) ||
-                    e.Emplacement.Contains(keyword) || (e.Cabinet != null && e.Cabinet.Contains(keyword)) ||
-                    (e.NumeroPremiereInstance != null && e.NumeroPremiereInstance.Contains(keyword)));
+                query = query.Where(e => e.NumeroDossier != null &&
+                    e.NumeroDossier.Annee == annee &&
+                    e.NumeroDossier.Nombre == nombre &&
+                    e.NumeroDossier.NumeroSujet == numeroSujet);
             }
-            var items = await query.OrderByDescending(e => e.DateArchivage).ThenByDescending(e => e.Id).ToListAsync();
-            return Ok(items.Select(ToResponse));
         }
+        else
+        {
+            // Recherche partielle
+            query = query.Where(e => e.NumeroDossier != null &&
+                (e.NumeroDossier.Annee.ToString().Contains(numeroDossier) ||
+                 e.NumeroDossier.Nombre.ToString().Contains(numeroDossier) ||
+                 e.NumeroDossier.NumeroSujet.ToString().Contains(numeroDossier) ||
+                 (e.NumeroDossier.Annee.ToString() + "/" +
+                  e.NumeroDossier.Nombre.ToString() + "/" +
+                  e.NumeroDossier.NumeroSujet.ToString()).Contains(numeroDossier)));
+        }
+    }
+
+    // Filtrer par numéro de première instance
+    if (!string.IsNullOrWhiteSpace(numeroPremiereInstance))
+    {
+        query = query.Where(e => e.NumeroPremiereInstance != null &&
+            e.NumeroPremiereInstance.Contains(numeroPremiereInstance.Trim()));
+    }
+
+    // Filtrer par tribunal source
+    if (!string.IsNullOrWhiteSpace(tribunalSource))
+    {
+        query = query.Where(e => e.TribunalSource.Contains(tribunalSource.Trim()));
+    }
+
+    // Filtrer par sujet
+    if (!string.IsNullOrWhiteSpace(sujet))
+    {
+        query = query.Where(e => e.Sujet.Contains(sujet.Trim()));
+    }
+
+    // Filtrer par état
+    if (!string.IsNullOrWhiteSpace(etat))
+    {
+        query = query.Where(e => e.EtatArchive == etat.Trim());
+    }
+
+    // Filtrer par date
+    if (dateDebut.HasValue)
+    {
+        query = query.Where(e => e.DateArchivage >= dateDebut.Value);
+    }
+    if (dateFin.HasValue)
+    {
+        var fin = dateFin.Value.AddDays(1);
+        query = query.Where(e => e.DateArchivage < fin);
+    }
+
+    var items = await query
+        .OrderByDescending(e => e.DateArchivage)
+        .ThenByDescending(e => e.Id)
+        .ToListAsync();
+
+    return Ok(items.Select(ToResponse));
+}
 
 [HttpGet("template-excel")]
 public IActionResult GetTemplateExcel()
@@ -563,32 +672,44 @@ public IActionResult GetTemplateExcel()
 }
 
         // ========== HELPERS ==========
-        private IQueryable<EntiteDJ> BaseQuery() => _context.EntitesDJs.Include(e => e.Service).Include(e => e.NumeroDossier).Include(e => e.Retraits);
-
-        private static object ToResponse(EntiteDJ e) => new
-        {
-            e.Id,
-            date = e.DateArchivage,
-            tribunalSource = e.TribunalSource,
-            sujet = e.Sujet,
-            direction = e.Direction,
-            destinataire = e.Destinataire,
-            description = e.Description,
-            etatArchive = e.EtatArchive,
-            emplacement = e.Emplacement,
-            lienPdf = e.LienPdf,
-            estTransmissible = e.EstTransmissible,
-            idBureauOrdre = e.IdBureauOrdre,
-            idService = e.IdService,
-            serviceNom = e.Service?.NomService,
-            cabinet = e.Cabinet,
-            numeroPremiereInstance = e.NumeroPremiereInstance,
-            estDocumentLie = e.EstDocumentLie,
-            parentJudiciaireId = e.ParentJudiciaireId,
-            numeroDossier = e.NumeroDossier != null ? $"{e.NumeroDossier.Annee}/{e.NumeroDossier.Nombre}/{e.NumeroDossier.NumeroSujet}" : null,
-            retraitsCount = e.Retraits.Count,
-            retraits = e.Retraits.OrderByDescending(r => r.DateDeRetrait).Select(r => new { r.Id, r.DateDeRetrait, r.MotifDeRetrait, r.EffectuePar, r.DateDeRetour, r.Notes })
-        };
+private IQueryable<EntiteDJ> BaseQuery() => _context.EntitesDJs
+    .Include(e => e.Service)
+    .Include(e => e.NumeroDossier)
+    .Include(e => e.Retraits);
+private static object ToResponse(EntiteDJ e) => new
+{
+    e.Id,
+    date = e.DateArchivage,
+    tribunalSource = e.TribunalSource,
+    sujet = e.Sujet,
+    direction = e.Direction,
+    destinataire = e.Destinataire,
+    description = e.Description,
+    etatArchive = e.EtatArchive,
+    emplacement = e.Emplacement,
+    lienPdf = e.LienPdf,
+    estTransmissible = e.EstTransmissible,
+    idBureauOrdre = e.IdBureauOrdre,
+    idService = e.IdService,
+    serviceNom = e.Service?.NomService,
+    cabinet = e.Cabinet,
+    numeroPremiereInstance = e.NumeroPremiereInstance,
+    estDocumentLie = e.EstDocumentLie,
+    parentJudiciaireId = e.ParentJudiciaireId,
+    // 🔥 CORRECTION : Ne jamais utiliser IdBureauOrdre ici
+    numeroDossier = e.NumeroDossier != null 
+        ? $"{e.NumeroDossier.Annee}/{e.NumeroDossier.Nombre}/{e.NumeroDossier.NumeroSujet}" 
+        : null,  // ← Si null, afficher '-' dans le frontend
+    retraitsCount = e.Retraits.Count,
+    retraits = e.Retraits.OrderByDescending(r => r.DateDeRetrait).Select(r => new { 
+        r.Id, 
+        r.DateDeRetrait, 
+        r.MotifDeRetrait, 
+        r.EffectuePar, 
+        r.DateDeRetour, 
+        r.Notes 
+    })
+};
 
 private async Task<IActionResult?> ValidateRequest(CourrierJudiciaireRequest request, int? excludeId)
 {

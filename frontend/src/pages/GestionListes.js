@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
-import { useModal } from '../context/ModalContext';
+import { useConfirm } from '../hooks/useConfirm';
 
 function GestionListes() {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
+  const { confirm, ConfirmModalComponent } = useConfirm();  // ← Utiliser useConfirm
   const [lists, setLists] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -13,11 +14,18 @@ function GestionListes() {
   const [activeTab, setActiveTab] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingItem, setEditingItem] = useState(null);
-  const [newItem, setNewItem] = useState({ listName: '', code: '', valueFr: '', valueAr: '', displayOrder: 0, isActive: true });
+  const [newItem, setNewItem] = useState({ 
+    listName: '', 
+    code: '', 
+    valueFr: '', 
+    valueAr: '', 
+    displayOrder: 0, 
+    isActive: true 
+  });
 
   const listNames = [
     'EquipmentType', 'EquipmentEtat', 'JudicialType', 'TribunalType',
-    'DocumentState', 'Direction', 'CorrespondanceType','Source','LinkedDocumentSource'
+    'DocumentState', 'Direction', 'CorrespondanceType', 'Source', 'LinkedDocumentSource'
   ];
 
   useEffect(() => {
@@ -43,15 +51,16 @@ function GestionListes() {
   };
 
   const handleCreate = async () => {
-    // Use active tab as listName if not already set
     const listName = newItem.listName || activeTab;
     const code = newItem.code?.toString().trim();
     const valueFr = newItem.valueFr?.trim();
     const valueAr = newItem.valueAr?.trim();
+    
     if (!listName || !code || !valueFr || !valueAr) {
       setError(t('champs_obligatoires'));
       return;
     }
+    
     try {
       await axios.post('/api/ListItems', {
         ...newItem,
@@ -62,37 +71,59 @@ function GestionListes() {
         displayOrder: parseInt(newItem.displayOrder) || 0,
         isActive: newItem.isActive
       });
+      
       setSuccess(t('ajout_succes'));
       fetchAllLists();
-      setNewItem({ listName: activeTab, code: '', valueFr: '', valueAr: '', displayOrder: 0, isActive: true });
+      setNewItem({ 
+        listName: activeTab, 
+        code: '', 
+        valueFr: '', 
+        valueAr: '', 
+        displayOrder: 0, 
+        isActive: true 
+      });
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.response?.data || t('erreur'));
+      setTimeout(() => setError(''), 3000);
     }
   };
 
   const handleUpdate = async () => {
     if (!editingItem) return;
+    
     try {
       await axios.put(`/api/ListItems/${editingItem.id}`, editingItem);
       setSuccess(t('modification_succes'));
       fetchAllLists();
       setEditingItem(null);
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.response?.data || t('erreur'));
+      setTimeout(() => setError(''), 3000);
     }
   };
 
-  const { showConfirm } = useModal();
-
+  // 🔥 FONCTION DE SUPPRESSION AVEC useConfirm
   const handleDelete = async (id) => {
-    const confirmed = await showConfirm(t('confirmation_supprimer'), null, t('confirmation'), true);
+    const confirmed = await confirm(
+      t('confirmation_supprimer') || 'Voulez-vous vraiment supprimer cet élément ? Cette action est irréversible.',
+      { 
+        title: t('attention') || 'Attention', 
+        confirmText: t('supprimer') || 'Supprimer',
+        cancelText: t('annuler') || 'Annuler'
+      }
+    );
+    
     if (confirmed) {
       try {
         await axios.delete(`/api/ListItems/${id}`);
         setSuccess(t('suppression_succes'));
         fetchAllLists();
+        setTimeout(() => setSuccess(''), 3000);
       } catch (err) {
         setError(t('erreur_suppression'));
+        setTimeout(() => setError(''), 3000);
       }
     }
   };
@@ -105,6 +136,9 @@ function GestionListes() {
 
   return (
     <div className="page-container">
+      {/* 🔥 Ajouter le composant de confirmation */}
+      <ConfirmModalComponent />
+      
       <h1 className="page-title">{t('gestion_listes')}</h1>
       {error && <div className="error-message">{error}</div>}
       {success && <div className="success-message">{success}</div>}
@@ -120,7 +154,7 @@ function GestionListes() {
               setNewItem(prev => ({ ...prev, listName: name }));
             }}
           >
-            {t(`list_${name}`)}
+            {t(`list_${name}`) || name}
           </button>
         ))}
       </div>
@@ -163,8 +197,15 @@ function GestionListes() {
                     <td>{item.displayOrder}</td>
                     <td>{item.isActive ? t('oui') : t('non')}</td>
                     <td className="action-icons">
-                      <button className="action-btn" onClick={() => setEditingItem(item)}>✏️ {t('modifier')}</button>
-                      <button className="action-btn action-btn-danger" onClick={() => handleDelete(item.id)}>🗑️ {t('supprimer')}</button>
+                      <button className="action-btn" onClick={() => setEditingItem(item)}>
+                        ✏️ {t('modifier')}
+                      </button>
+                      <button 
+                        className="action-btn action-btn-danger" 
+                        onClick={() => handleDelete(item.id)}
+                      >
+                        🗑️ {t('supprimer')}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -180,23 +221,41 @@ function GestionListes() {
             <div className="form-grid">
               <div className="form-field">
                 <label>{t('code')} *</label>
-                <input type="text" value={newItem.code} onChange={e => setNewItem({ ...newItem, code: e.target.value })} />
+                <input 
+                  type="text" 
+                  value={newItem.code} 
+                  onChange={e => setNewItem({ ...newItem, code: e.target.value })} 
+                />
               </div>
               <div className="form-field">
                 <label>{t('valeur_fr')} *</label>
-                <input value={newItem.valueFr} onChange={e => setNewItem({ ...newItem, valueFr: e.target.value })} />
+                <input 
+                  value={newItem.valueFr} 
+                  onChange={e => setNewItem({ ...newItem, valueFr: e.target.value })} 
+                />
               </div>
               <div className="form-field">
                 <label>{t('valeur_ar')} *</label>
-                <input value={newItem.valueAr} onChange={e => setNewItem({ ...newItem, valueAr: e.target.value })} />
+                <input 
+                  value={newItem.valueAr} 
+                  onChange={e => setNewItem({ ...newItem, valueAr: e.target.value })} 
+                />
               </div>
               <div className="form-field">
                 <label>{t('ordre')}</label>
-                <input type="number" value={newItem.displayOrder} onChange={e => setNewItem({ ...newItem, displayOrder: parseInt(e.target.value) || 0 })} />
+                <input 
+                  type="number" 
+                  value={newItem.displayOrder} 
+                  onChange={e => setNewItem({ ...newItem, displayOrder: parseInt(e.target.value) || 0 })} 
+                />
               </div>
               <div className="form-field">
                 <label className="checkbox-field">
-                  <input type="checkbox" checked={newItem.isActive} onChange={e => setNewItem({ ...newItem, isActive: e.target.checked })} />
+                  <input 
+                    type="checkbox" 
+                    checked={newItem.isActive} 
+                    onChange={e => setNewItem({ ...newItem, isActive: e.target.checked })} 
+                  />
                   {t('actif')}
                 </label>
               </div>
@@ -206,6 +265,7 @@ function GestionListes() {
             </div>
           </div>
 
+          {/* Modal d'édition */}
           {editingItem && (
             <div className="modal-overlay" onClick={() => setEditingItem(null)}>
               <div className="modal" onClick={e => e.stopPropagation()}>
@@ -214,11 +274,42 @@ function GestionListes() {
                   <button className="btn-secondary" onClick={() => setEditingItem(null)}>{t('fermer')}</button>
                 </div>
                 <div className="form-grid">
-                  <div className="form-field"><label>{t('code')}</label><input value={editingItem.code} disabled /></div>
-                  <div className="form-field"><label>{t('valeur_fr')}</label><input value={editingItem.valueFr} onChange={e => setEditingItem({ ...editingItem, valueFr: e.target.value })} /></div>
-                  <div className="form-field"><label>{t('valeur_ar')}</label><input value={editingItem.valueAr} onChange={e => setEditingItem({ ...editingItem, valueAr: e.target.value })} /></div>
-                  <div className="form-field"><label>{t('ordre')}</label><input type="number" value={editingItem.displayOrder} onChange={e => setEditingItem({ ...editingItem, displayOrder: parseInt(e.target.value) || 0 })} /></div>
-                  <div className="form-field"><label className="checkbox-field"><input type="checkbox" checked={editingItem.isActive} onChange={e => setEditingItem({ ...editingItem, isActive: e.target.checked })} /> {t('actif')}</label></div>
+                  <div className="form-field">
+                    <label>{t('code')}</label>
+                    <input value={editingItem.code} disabled />
+                  </div>
+                  <div className="form-field">
+                    <label>{t('valeur_fr')}</label>
+                    <input 
+                      value={editingItem.valueFr} 
+                      onChange={e => setEditingItem({ ...editingItem, valueFr: e.target.value })} 
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label>{t('valeur_ar')}</label>
+                    <input 
+                      value={editingItem.valueAr} 
+                      onChange={e => setEditingItem({ ...editingItem, valueAr: e.target.value })} 
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label>{t('ordre')}</label>
+                    <input 
+                      type="number" 
+                      value={editingItem.displayOrder} 
+                      onChange={e => setEditingItem({ ...editingItem, displayOrder: parseInt(e.target.value) || 0 })} 
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label className="checkbox-field">
+                      <input 
+                        type="checkbox" 
+                        checked={editingItem.isActive} 
+                        onChange={e => setEditingItem({ ...editingItem, isActive: e.target.checked })} 
+                      />
+                      {t('actif')}
+                    </label>
+                  </div>
                 </div>
                 <div className="form-actions">
                   <button className="btn-primary" onClick={handleUpdate}>{t('enregistrer')}</button>

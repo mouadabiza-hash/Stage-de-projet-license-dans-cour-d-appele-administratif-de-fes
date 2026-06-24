@@ -220,35 +220,36 @@ function MesEntites() {
     setShowFormModal(true);
   };
 
-  const openEditModal = (doc) => {
-    if (doc.type !== 'Judiciaire') return;
-    if (user?.role === 'Procedures') return;
+ const openEditModal = (doc) => {
+  if (doc.type !== 'Judiciaire') return;
+  if (user?.role === 'Procedures') return;
 
-    setEditingDoc(doc);
-    const isLinked = doc.estDocumentLie === true;
-    setFormMode(isLinked ? 'linked' : 'file');
-    
-    const isEnregistrement = user?.role === 'Enregistrement';
-    setEditOnlyNumeroDossier(isEnregistrement);
-    
-    setFormData({
-      numeroDossier: doc.numeroDossierJudiciaire || '',
-      tribunalSource: doc.source || '',
-      sujet: doc.sujet || '',
-      date: doc.dateCreation ? doc.dateCreation.slice(0, 10) : new Date().toISOString().slice(0, 10),
-      description: doc.description || '',
-      lienPdf: doc.lienPdf || '',
-      numeroPremiereInstance: doc.numeroPremiereInstance || '',
-      etat: doc.etatArchive || 'Nouveau',
-      parentJudiciaireId: doc.parentJudiciaireId || '',
-      typeJudiciaire: doc.typeJudiciaire || '',
-      linkedDocumentType: doc.linkedDocumentType || '',
-      linkedDocumentSource: doc.linkedDocumentSource || ''
-    });
-    if (isLinked) fetchParents();
-    setFormError(''); setFormSuccess('');
-    setShowFormModal(true);
-  };
+  setEditingDoc(doc);
+  const isLinked = doc.estDocumentLie === true;
+  setFormMode(isLinked ? 'linked' : 'file');
+  
+  const isEnregistrement = user?.role === 'Enregistrement';
+  setEditOnlyNumeroDossier(isEnregistrement);
+  
+  setFormData({
+    // 🔥 CORRECTION : Utiliser numeroDossierJudiciaire, PAS idBureauOrdre
+    numeroDossier: doc.numeroDossierJudiciaire || '',
+    tribunalSource: doc.source || '',
+    sujet: doc.sujet || '',
+    date: doc.dateCreation ? doc.dateCreation.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    description: doc.description || '',
+    lienPdf: doc.lienPdf || '',
+    numeroPremiereInstance: doc.numeroPremiereInstance || '',
+    etat: doc.etatArchive || 'Nouveau',
+    parentJudiciaireId: doc.parentJudiciaireId || '',
+    typeJudiciaire: doc.typeJudiciaire || '',
+    linkedDocumentType: doc.linkedDocumentType || '',
+    linkedDocumentSource: doc.linkedDocumentSource || ''
+  });
+  if (isLinked) fetchParents();
+  setFormError(''); setFormSuccess('');
+  setShowFormModal(true);
+};
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;

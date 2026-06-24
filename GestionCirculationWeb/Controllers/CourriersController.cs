@@ -280,6 +280,10 @@ private static void ApplyHeaderStructure(IXLWorksheet ws)
 public async Task<IActionResult> ExportExcel(string? motCle, string? numeroBureauOrdre, DateTime? date, string? type, [FromQuery] List<int> ids)
 {
     var query = GetUnifiedQuery().Where(e => e.ParentId == null);
+    
+    // 🔥 FILTRE PRINCIPAL : UNIQUEMENT LES ENTITÉS AVEC UN NUMÉRO DE BUREAU D'ORDRE
+    query = query.Where(e => !string.IsNullOrEmpty(e.IdBureauOrdre));
+    
     query = ApplyStructuredFilters(query, numeroBureauOrdre, date, type);
 
     if (!string.IsNullOrWhiteSpace(motCle))

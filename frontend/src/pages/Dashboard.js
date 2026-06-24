@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useModal } from '../context/ModalContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../hooks/useConfirm';
 import DocumentModal from '../components/DocumentModal';
 
 // ── Reusable HiddenPopup ──────────────────────────────────────────────────────
@@ -84,7 +86,8 @@ function Dashboard() {
   const locale = i18n.resolvedLanguage?.startsWith('ar') ? 'ar-MA' : 'fr-FR';
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { showConfirm } = useModal();
+  const { showToast } = useToast();
+  const { confirm, ConfirmModalComponent } = useConfirm();
   const serviceId = user?.idService;
 
   const [pending, setPending] = useState([]);
@@ -141,12 +144,10 @@ function Dashboard() {
   const [errorMessage, setErrorMessage] = useState({ text: '', visible: false });
 
   const showSuccess = (text) => {
-    setSuccessMessage({ text, visible: true });
-    setTimeout(() => setSuccessMessage({ text: '', visible: false }), 5000);
+    showToast(text, 'success');
   };
   const showError = (text) => {
-    setErrorMessage({ text, visible: true });
-    setTimeout(() => setErrorMessage({ text: '', visible: false }), 6000);
+    showToast(text, 'error');
   };
 
   useEffect(() => {
@@ -199,7 +200,10 @@ function Dashboard() {
   const formatDate = (value) => value ? new Date(value).toLocaleDateString(locale) : '-';
 
   const handleCancelOutgoing = async (id) => {
-    const confirmed = await showConfirm(t('confirmation_annuler'), null, t('confirmation'), true);
+    const confirmed = await confirm(
+      t('confirmation_annuler'),
+      { title: t('attention'), confirmText: t('annuler') }
+    );
     if (confirmed) {
       await axios.post(`/api/transactions/${id}/cancel`);
       fetchAllData();
@@ -208,7 +212,10 @@ function Dashboard() {
   };
 
   const handleHide = async (id) => {
-    const confirmed = await showConfirm(t('confirmation_masquer'), null, t('confirmation'));
+    const confirmed = await confirm(
+      t('confirmation_masquer'),
+      { title: t('attention'), confirmText: t('masquer') }
+    );
     if (confirmed) {
       const newHidden = [...hiddenIds, id];
       setHiddenIds(newHidden);
@@ -218,7 +225,10 @@ function Dashboard() {
   };
 
   const handleMarkReturned = async (id) => {
-    const confirmed = await showConfirm(t('confirmation_retour'), null, t('confirmation'));
+    const confirmed = await confirm(
+      t('confirmation_retour'),
+      { title: t('attention'), confirmText: t('marquer_retourne') }
+    );
     if (confirmed) {
       await axios.post(`/api/transactions/${id}/mark-returned`);
       fetchAllData();
@@ -467,6 +477,8 @@ function Dashboard() {
 
   return (
     <div className="dashboard-container">
+      <ConfirmModalComponent />
+      
       {/* Toasts */}
       {successMessage.visible && (
         <div className="toast-message success">

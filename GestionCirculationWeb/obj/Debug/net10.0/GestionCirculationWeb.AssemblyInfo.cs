@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("GestionCirculationWeb")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1b7bb7d615a39ae843842213904a1aa01bd81d77")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1906c69b87b21194a8b1d7d754d54fb12cbd3ab4")]
 [assembly: System.Reflection.AssemblyProductAttribute("GestionCirculationWeb")]
 [assembly: System.Reflection.AssemblyTitleAttribute("GestionCirculationWeb")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -561,7 +561,11 @@
 "service_supprime_succes": "Service supprimé avec succès",
 "voir_par_service": "Voir par service",
 "mes_transactions_envoyees":"mes transactions envoyées",
-"toutes_mes_transactions":"toutes mes transactions"
+"toutes_mes_transactions":"toutes mes transactions",
+"modifier_cabinet": "Modifier le cabinet",
+"cabinet_requis": "Veuillez saisir un cabinet",
+"cabinet_modifie": "Cabinet modifié avec succès",
+"erreur_modification": "Erreur lors de la modification"
 
 }
 

@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useModal } from '../context/ModalContext';
 import { usePermissions } from '../hooks/usePermissions';
+import { useToast } from '../context/ToastContext';        // ← AJOUTER CETTE LIGNE
+import { useConfirm } from '../hooks/useConfirm';          // ← AJOUTER CETTE LIGNE
 import DocumentModal from '../components/DocumentModal';
 import SearchableSelect from './SearchableSelect';
 
@@ -14,15 +16,17 @@ const TYPE_SORTANT = 'sortant';
 function GestionCourriers() {
   const { t, i18n } = useTranslation();
   const { showConfirm, showAlert } = useModal();
+   const { confirm, ConfirmModalComponent } = useConfirm();
   const locale = i18n.language;
   const { user } = useAuth();
+  const { showToast } = useToast();
   const perms = usePermissions();
   const serviceId = user?.idService;
   const currentYear = new Date().getFullYear().toString();
   const isGreffier = user?.role === 'Greffier';
   const isAdmin = user?.role === 'Admin';
   const userRole = user?.role;
-
+ 
   const [allDocs, setAllDocs] = useState([]);
 
   const isEnregistrement = userRole === 'Enregistrement';
@@ -451,74 +455,87 @@ const fetchData = useCallback(async () => {
     }
   };
 
-  const handleEdit = (doc) => {
-    if (!perms.canCreateAdministratif && !perms.canCreateJuridique && !perms.canCreateLinked) return;
-    let type;
-    if (doc.typeDocument === 'Judiciaire') type = TYPE_JUDICIAIRE;
-    else if (doc.typeRegistre === 'Morasalat' && doc.typeCorrespondance === 'Sortante') type = TYPE_SORTANT;
-    else type = TYPE_ADMINISTRATIF;
+ const handleEdit = (doc) => {
+  if (!perms.canCreateAdministratif && !perms.canCreateJuridique && !perms.canCreateLinked) return;
+  let type;
+  if (doc.typeDocument === 'Judiciaire') type = TYPE_JUDICIAIRE;
+  else if (doc.typeRegistre === 'Morasalat' && doc.typeCorrespondance === 'Sortante') type = TYPE_SORTANT;
+  else type = TYPE_ADMINISTRATIF;
 
-    setTab(type);
-    setEditingId(doc.id);
-    setJudMode(doc.estDocumentLie ? 'linked' : 'file');
+  setTab(type);
+  setEditingId(doc.id);
+  setJudMode(doc.estDocumentLie ? 'linked' : 'file');
 
-    const idNum = (doc.idBureauOrdre || '').split('/')[0];
+  const idNum = (doc.idBureauOrdre || '').split('/')[0];
 
-    let dateMessage = '';
-    const desc = doc.description || '';
-    try {
-      const match = desc.match(/تاريخ الرسالة:\s*(\S+)/);
-      if (match) dateMessage = match[1];
-    } catch { /* ignore */ }
+  let dateMessage = '';
+  const desc = doc.description || '';
+  try {
+    const match = desc.match(/تاريخ الرسالة:\s*(\S+)/);
+    if (match) dateMessage = match[1];
+  } catch { /* ignore */ }
 
-    setForm({
-      ...emptyForm(type),
-      idBureauOrdre: idNum || '',
-      date: doc.date ? doc.date.slice(0, 10) : '',
-      source: doc.source || '',
-      sujet: doc.sujet || '',
-      destinataire: doc.destinataire || '',
-      description: desc.replace(/تاريخ الرسالة:\s*\S+\s*\|?\s*/, '').trim(),
-      etat: doc.etat || 'Nouveau',
-      lienPdf: doc.lienPdf || '',
-      idService: doc.idService || serviceId,
-      estTransmissible: Boolean(doc.estTransmissible),
-      numeroDeCourrier: doc.numeroDeCourrier || '',
-      tribunalSource: doc.tribunalSource || '',
-      typeJudiciaire: doc.typeJudiciaire || '',
-      numeroPremiereInstance: doc.numeroPremiereInstance || '',
-      destinataireSortant: doc.destinataire || '',
-      estDocumentLie: doc.estDocumentLie || false,
-      parentJudiciaireId: doc.parentJudiciaireId || '',
-      dateMessage,
-      dateArrivee: doc.date ? doc.date.slice(0, 10) : '',
-      numeroDossier: doc.numeroDossier || '',
-      linkedDocumentType: doc.linkedDocumentType || '',
-      linkedDocumentSource: doc.linkedDocumentSource || ''
-    });
-    // Scroll to form with smooth animation
-    setTimeout(() => {
-      const formCard = document.querySelector('.form-card');
-      if (formCard) {
-        formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-    }, 100);
-  };
+  setForm({
+    ...emptyForm(type),
+    idBureauOrdre: idNum || '',
+    date: doc.date ? doc.date.slice(0, 10) : '',
+    source: doc.source || '',
+    sujet: doc.sujet || '',
+    destinataire: doc.destinataire || '',
+    description: desc.replace(/تاريخ الرسالة:\s*\S+\s*\|?\s*/, '').trim(),
+    etat: doc.etat || 'Nouveau',
+    lienPdf: doc.lienPdf || '',
+    idService: doc.idService || serviceId,
+    estTransmissible: Boolean(doc.estTransmissible),
+    numeroDeCourrier: doc.numeroDeCourrier || '',
+    tribunalSource: doc.tribunalSource || '',
+    typeJudiciaire: doc.typeJudiciaire || '',
+    numeroPremiereInstance: doc.numeroPremiereInstance || '',
+    destinataireSortant: doc.destinataire || '',
+    estDocumentLie: doc.estDocumentLie || false,
+    parentJudiciaireId: doc.parentJudiciaireId || '',
+    dateMessage,
+    dateArrivee: doc.date ? doc.date.slice(0, 10) : '',
+    // 🔥 CORRECTION : Utiliser numeroDossier ou numeroDossierJudiciaire
+    numeroDossier: doc.numeroDossier || doc.numeroDossierJudiciaire || '',
+    linkedDocumentType: doc.linkedDocumentType || '',
+    linkedDocumentSource: doc.linkedDocumentSource || ''
+  });
+  // ... reste du code
+};
 
-  const handleDelete = async (id, typeDoc) => {
-    if (!perms.canDelete) return;
-    const confirmed = await showConfirm(t('confirmation_supprimer'), null, t('confirmation'), true);
-    if (!confirmed) return;
-    try {
-      if (typeDoc === 'Judiciaire') await axios.delete(`/api/acteursjudiciaires/${id}`);
-      else await axios.delete(`/api/courriers/${id}`);
-      showSuccess(t('suppression_succes'));
-      fetchData();
-    } catch (err) { showError(getErrorMessage(err, t('erreur_suppression'))); }
-  };
+// Dans GestionCourriers.js, remplacez la fonction handleDelete par :
 
+const handleDelete = async (id, typeDoc) => {
+  if (!perms.canDelete) {
+    showToast(t('access_denied') || 'Vous n\'avez pas les droits pour supprimer', 'error');
+    return;
+  }
+  
+  const confirmed = await confirm(
+    t('confirmation_supprimer') || 'Voulez-vous vraiment supprimer ce document ? Cette action est irréversible.',
+    { 
+      title: t('attention') || 'Attention', 
+      confirmText: t('supprimer') || 'Supprimer',
+      cancelText: t('annuler') || 'Annuler'
+    }
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    if (typeDoc === 'Judiciaire') {
+      await axios.delete(`/api/acteursjudiciaires/${id}`);
+    } else {
+      await axios.delete(`/api/courriers/${id}`);
+    }
+    showToast(t('suppression_succes') || 'Document supprimé avec succès', 'success');
+    fetchData();
+  } catch (err) {
+    const errorMsg = getErrorMessage(err, t('erreur_suppression'));
+    showToast(errorMsg, 'error');
+  }
+};
   // ---------- TRANSFER ----------
   const openTransferModal = (doc) => {
     setTransferTarget(doc);
@@ -1025,6 +1042,7 @@ const linkedDocOpts = linkedDocTypes.map(ld => ({ value: ld.code, label: locale 
   // ========== RENDER ==========
   return (
     <div className="page-container" dir="rtl">
+      <ConfirmModalComponent />
       <h1 className="page-title">{t('menu_courriers')}</h1>
       {error && <div className="error-message">{error}</div>}
       {success && <div className="success-message">{success}</div>}

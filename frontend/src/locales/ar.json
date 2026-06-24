@@ -578,6 +578,10 @@
 "service_ajoute_succes": "تم إضافة الخدمة بنجاح",
 "service_modifie_succes": "تم تعديل الخدمة بنجاح",
 "service_supprime_succes": "تم حذف الخدمة بنجاح",
-"select_file_to_view": "الرجاء اختيار ملف لعرضه"
+"select_file_to_view": "الرجاء اختيار ملف لعرضه",
+"modifier_cabinet": "تعديل الخزانة",
+"cabinet_requis": "الرجاء إدخال الخزانة",
+"cabinet_modifie": "تم تعديل الخزانة بنجاح",
+"erreur_modification": "خطأ أثناء التعديل"
 }
 

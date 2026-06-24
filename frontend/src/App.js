@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ModalProvider } from './context/ModalContext';
+import { ToastProvider } from './context/ToastContext';
 import Login from './pages/Login';
 import PrivateRoute from './components/PrivateRoute';
 import MainLayout from './layouts/MainLayout';
@@ -49,13 +50,16 @@ function AppRoutes() {
   );
 }
 
+
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <ModalProvider>
-          <AppRoutes />
-        </ModalProvider>
+        <ToastProvider>
+          <ModalProvider>
+            <AppRoutes />
+          </ModalProvider>
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   );
