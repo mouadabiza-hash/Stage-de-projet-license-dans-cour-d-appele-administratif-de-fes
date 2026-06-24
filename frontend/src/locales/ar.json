@@ -582,6 +582,16 @@
 "modifier_cabinet": "تعديل الخزانة",
 "cabinet_requis": "الرجاء إدخال الخزانة",
 "cabinet_modifie": "تم تعديل الخزانة بنجاح",
-"erreur_modification": "خطأ أثناء التعديل"
+"erreur_modification": "خطأ أثناء التعديل",
+  "aucun_retrait_trouve": "لا توجد سحوبات",
+  "retourne": "مرجع",
+  "rechercher_par_numero": "بحث برقم الملف",
+  "rechercher_par_date": "بحث بالتاريخ",
+  "rechercher_numero_dossier": "بحث برقم الملف...",
+  "rechercher_date": "بحث بالتاريخ (DD/MM/YYYY)...",
+  "total": "المجموع",
+  "aucun_resultat": "لا توجد نتائج مطابقة للبحث",
+  "access_denied": "تم رفض الوصول"
+
 }
 

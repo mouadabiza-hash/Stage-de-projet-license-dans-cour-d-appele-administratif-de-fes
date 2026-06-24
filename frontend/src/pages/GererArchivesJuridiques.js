@@ -27,6 +27,8 @@ function GererArchivesJuridiques() {
   const [showCabinetModal, setShowCabinetModal] = useState(false);
   const [cabinetValue, setCabinetValue] = useState('');
   const [updatingCabinet, setUpdatingCabinet] = useState(false);
+  // 🔥 AJOUT : Stocker l'ID de l'élément à modifier
+  const [cabinetItemId, setCabinetItemId] = useState(null);
 
   // Dynamic lists
   const [tribunalTypes, setTribunalTypes] = useState([]);
@@ -42,6 +44,7 @@ function GererArchivesJuridiques() {
     colDateArchivage: '',
   });
   const [showMapping, setShowMapping] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
 
   // Fetch document states and tribunal types on mount
   useEffect(() => {
@@ -208,21 +211,33 @@ function GererArchivesJuridiques() {
     setPanelSuccess("");
   };
 
-  // ========== CABINET HANDLERS ==========
+  // ========== CABINET HANDLERS CORRIGÉS ==========
+  // 🔥 Nouvelle fonction pour ouvrir le modal cabinet avec l'ID de l'élément
+  const openCabinetModal = (item) => {
+    setCabinetItemId(item.id);
+    setCabinetValue(item.cabinet || '');
+    setShowCabinetModal(true);
+  };
+
   const handleUpdateCabinet = async () => {
-    if (!selectedItem) return;
+    if (!cabinetItemId) {
+      showToast('ID de l\'élément manquant', 'error');
+      return;
+    }
+    
     if (!cabinetValue.trim()) {
       showToast(t('cabinet_requis') || 'Veuillez saisir un cabinet', 'warning');
       return;
     }
+    
     setUpdatingCabinet(true);
     try {
       // Récupérer les données complètes du document
-      const fullItem = await axios.get(`/api/acteursjudiciaires/${selectedItem.id}`);
+      const fullItem = await axios.get(`/api/acteursjudiciaires/${cabinetItemId}`);
       const currentData = fullItem.data;
       
       // Mettre à jour uniquement le cabinet
-      await axios.put(`/api/acteursjudiciaires/${selectedItem.id}`, {
+      await axios.put(`/api/acteursjudiciaires/${cabinetItemId}`, {
         idBureauOrdre: currentData.idBureauOrdre || null,
         date: currentData.date || new Date().toISOString(),
         tribunalSource: currentData.tribunalSource || '',
@@ -246,6 +261,7 @@ function GererArchivesJuridiques() {
       showToast(t('cabinet_modifie') || 'Cabinet modifié avec succès', 'success');
       setShowCabinetModal(false);
       setCabinetValue('');
+      setCabinetItemId(null);
       await fetchArchives();
     } catch (err) {
       showToast(getErrorMessage(err, t('erreur_modification')), 'error');
@@ -273,6 +289,9 @@ function GererArchivesJuridiques() {
 
   const executeImport = async () => {
     if (!importFile) return;
+    
+    setImportLoading(true);
+    
     const formData = new FormData();
     formData.append('file', importFile);
     const params = new URLSearchParams({
@@ -281,22 +300,51 @@ function GererArchivesJuridiques() {
       colEmplacement: mapping.colEmplacement || '',
       colDateArchivage: mapping.colDateArchivage || '',
     });
+    
     try {
       const res = await axios.post(
         `/api/acteursjudiciaires/import-archive/execute?${params.toString()}`,
         formData
       );
       const data = res.data;
-      let msg = `${data.archived} dossier(s) archivé(s).`;
-      if (data.errors?.length > 0)
-        msg += `\n\n${t('details_erreurs')} :\n${data.errors.join('\n')}`;
-      showToast(msg, data.errors?.length > 0 ? 'warning' : 'success');
-      if (data.archived > 0) fetchArchives();
+      
+      if (data.archived > 0) {
+        let msg = `✅ ${data.archived} dossier(s) archivé(s) avec succès.`;
+        if (data.errors && data.errors.length > 0) {
+          msg += `\n\n⚠️ ${t('details_erreurs') || 'Détails des erreurs'} :\n${data.errors.join('\n')}`;
+          showToast(msg, 'warning');
+        } else {
+          showToast(msg, 'success');
+        }
+      } else if (data.errors && data.errors.length > 0) {
+        showToast(`❌ ${data.errors.join('\n')}`, 'error');
+      } else {
+        showToast(t('aucune_ligne_importee') || 'Aucun dossier importé.', 'info');
+      }
+      
+      await fetchArchives();
+      
       setShowMapping(false);
       setImportFile(null);
       setMapping({ colIdentifiant: '', colCabinet: '', colEmplacement: '', colDateArchivage: '' });
+      
     } catch (err) {
-      setGlobalError(t('erreur_import'));
+      let errorMsg = t('erreur_import') || 'Erreur lors de l\'importation';
+      if (err.response?.data) {
+        if (typeof err.response.data === 'string') {
+          errorMsg = err.response.data;
+        } else if (err.response.data.message) {
+          errorMsg = err.response.data.message;
+        }
+      }
+      showToast(errorMsg, 'error');
+      
+      await fetchArchives();
+      
+      setShowMapping(false);
+      setImportFile(null);
+    } finally {
+      setImportLoading(false);
     }
   };
 
@@ -417,7 +465,13 @@ function GererArchivesJuridiques() {
               </div>
             </div>
             <div className="form-actions">
-              <button className="btn-primary" onClick={executeImport}>{t('importer')}</button>
+              <button 
+                className="btn-primary" 
+                onClick={executeImport}
+                disabled={importLoading}
+              >
+                {importLoading ? t('importing') || 'Importation...' : t('importer')}
+              </button>
               <button className="btn-secondary" onClick={() => setShowMapping(false)}>{t('annuler')}</button>
             </div>
           </div>
@@ -459,10 +513,13 @@ function GererArchivesJuridiques() {
                         <button onClick={() => selectItem(item)}>
                           {t("gerer_retraits") || "إدارة السحب"}
                         </button>
-                      <button 
-                        className="action-icons" onClick={() => { setCabinetValue(selectedItem.cabinet || ''); setShowCabinetModal(true); }} >
-                        ✏️ {t('modifier_cabinet') || 'Modifier le cabinet'}
-                      </button>
+                        {/* 🔥 BOUTON CORRIGÉ */}
+                        <button 
+                          className="action-btn action-btn-warning"
+                          onClick={() => openCabinetModal(item)}
+                        >
+                          ✏️ {t('modifier_cabinet') || 'Modifier le cabinet'}
+                        </button>
                       </td>
                     )}
                   </tr>
@@ -486,8 +543,6 @@ function GererArchivesJuridiques() {
 
           {panelError && <div className="error-message" style={{ marginBottom: "1rem" }}>{panelError}</div>}
           {panelSuccess && <div className="success-message" style={{ marginBottom: "1rem" }}>{panelSuccess}</div>}
-
-         
 
           <form onSubmit={handleSaveRetrait}>
             <div className="form-grid">
@@ -570,11 +625,15 @@ function GererArchivesJuridiques() {
 
       {/* Cabinet modification modal */}
       {showCabinetModal && (
-        <div className="modal-overlay" onClick={() => setShowCabinetModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '450px' }} onClick={e => e.stopPropagation()}>
             <div className="registry-panel-header">
               <h3>{t('modifier_cabinet') || 'Modifier le cabinet'}</h3>
-              <button className="btn-secondary" onClick={() => setShowCabinetModal(false)}>{t('fermer')}</button>
+              <button className="btn-secondary" onClick={() => {
+                setShowCabinetModal(false);
+                setCabinetItemId(null);
+                setCabinetValue('');
+              }}>{t('fermer')}</button>
             </div>
             <div className="form-grid">
               <div className="form-field">
@@ -596,7 +655,11 @@ function GererArchivesJuridiques() {
               >
                 {updatingCabinet ? t('saving') : t('modifier')}
               </button>
-              <button className="btn-secondary" onClick={() => setShowCabinetModal(false)}>{t('annuler')}</button>
+              <button className="btn-secondary" onClick={() => {
+                setShowCabinetModal(false);
+                setCabinetItemId(null);
+                setCabinetValue('');
+              }}>{t('annuler')}</button>
             </div>
           </div>
         </div>

@@ -3,29 +3,43 @@ import axios from "axios";
 import { useTranslation } from "react-i18next";
 import { useModal } from "../context/ModalContext";
 import { usePermissions } from "../hooks/usePermissions";
+import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../hooks/useConfirm";
 
 function TousLesRetraits() {
   const { t } = useTranslation();
   const { showConfirm } = useModal();
+  const { showToast } = useToast();
+  const { confirm, ConfirmModalComponent } = useConfirm();
   const perms = usePermissions();
   const canManageRetraits = perms.canArchive;
 
   const [retraits, setRetraits] = useState([]);
+  const [filteredRetraits, setFilteredRetraits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [globalError, setGlobalError] = useState("");
   const [globalSuccess, setGlobalSuccess] = useState("");
+  
+  // 🔥 État pour la recherche
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchType, setSearchType] = useState("numero"); // "numero" ou "date"
 
   // Charger les retraits au montage
   useEffect(() => {
     fetchAllRetraits();
   }, []);
 
+  // Filtrer les retraits quand la recherche change
+  useEffect(() => {
+    applyFilters();
+  }, [searchTerm, searchType, retraits]);
+
   const fetchAllRetraits = async () => {
     try {
       setLoading(true);
-      // Adaptez l'URL selon votre API
       const res = await axios.get("/api/acteursjudiciaires/retraits?sort=dateDesc");
       setRetraits(res.data);
+      setFilteredRetraits(res.data);
       setGlobalError("");
     } catch (err) {
       setGlobalError(getErrorMessage(err, t("erreur_chargement")));
@@ -34,40 +48,93 @@ function TousLesRetraits() {
     }
   };
 
-  // ---- Actions ----
-  const handleRetour = async (retraitId) => {
-    if (!canManageRetraits) return;
-    const retrait = retraits.find(r => r.id === retraitId);
-    if (!retrait || retrait.dateDeRetour) {
-      setGlobalError(t("retrait_deja_retourne") || "Retrait déjà retourné");
+  // 🔥 Fonction de filtrage
+  const applyFilters = () => {
+    if (!searchTerm.trim()) {
+      setFilteredRetraits(retraits);
       return;
     }
+
+    const term = searchTerm.trim().toLowerCase();
+    
+    let filtered = retraits.filter((r) => {
+      if (searchType === "numero") {
+        // Recherche par numéro de dossier
+        return (r.dossierNumero && r.dossierNumero.toLowerCase().includes(term)) ||
+               (r.dossierSujet && r.dossierSujet.toLowerCase().includes(term));
+      } else if (searchType === "date") {
+        // Recherche par date (format: DD/MM/YYYY ou YYYY-MM-DD)
+        const dateStr = r.dateDeRetrait ? new Date(r.dateDeRetrait).toLocaleDateString() : "";
+        const dateStrAr = r.dateDeRetrait ? formatDate(r.dateDeRetrait) : "";
+        return dateStr.includes(term) || dateStrAr.includes(term);
+      }
+      return false;
+    });
+
+    setFilteredRetraits(filtered);
+  };
+
+  // 🔥 Réinitialiser la recherche
+  const resetSearch = () => {
+    setSearchTerm("");
+    setSearchType("numero");
+    setFilteredRetraits(retraits);
+    setGlobalError("");
+  };
+
+  // ---- Actions ----
+  const handleRetour = async (retraitId) => {
+    if (!canManageRetraits) {
+      showToast(t("access_denied") || "Vous n'avez pas les droits", "error");
+      return;
+    }
+    
+    const retrait = retraits.find(r => r.id === retraitId);
+    if (!retrait || retrait.dateDeRetour) {
+      showToast(t("retrait_deja_retourne") || "Retrait déjà retourné", "warning");
+      return;
+    }
+    
     try {
       await axios.put(`/api/acteursjudiciaires/retraits/${retraitId}/retour`, {
         dateDeRetour: new Date().toISOString(),
         notes: "",
       });
-      setGlobalSuccess(t("retour_enregistre") || "Retour enregistré");
+      showToast(t("retour_enregistre") || "Retour enregistré", "success");
       await fetchAllRetraits();
     } catch (err) {
-      setGlobalError(getErrorMessage(err, t("erreur_retour")));
+      showToast(getErrorMessage(err, t("erreur_retour")), "error");
     }
   };
 
+  // 🔥 CORRECTION : Utiliser confirm de useConfirm au lieu de showConfirm
   const handleAnnuler = async (retraitId) => {
-    if (!canManageRetraits) return;
-    const confirmed = await showConfirm(t("confirmation_annuler_retrait") || "Annuler ce retrait ?", null, t("confirmation"));
+    if (!canManageRetraits) {
+      showToast(t("access_denied") || "Vous n'avez pas les droits", "error");
+      return;
+    }
+    
+    const confirmed = await confirm(
+      t("confirmation_annuler_retrait") || "Voulez-vous vraiment annuler ce retrait ? Cette action est irréversible.",
+      { 
+        title: t("attention") || "Attention", 
+        confirmText: t("annuler_retrait") || "Annuler le retrait",
+        cancelText: t("annuler") || "Annuler"
+      }
+    );
+    
     if (!confirmed) return;
+    
     try {
       await axios.delete(`/api/acteursjudiciaires/retraits/${retraitId}`);
-      setGlobalSuccess(t("retrait_annule") || "Retrait annulé");
+      showToast(t("retrait_annule") || "Retrait annulé avec succès", "success");
       await fetchAllRetraits();
     } catch (err) {
-      setGlobalError(getErrorMessage(err, t("erreur_annulation_retrait")));
+      showToast(getErrorMessage(err, t("erreur_annulation_retrait")), "error");
     }
   };
 
-  // ---- Export Excel (optionnel) ----
+  // ---- Export Excel ----
   const exportToExcel = () => {
     fetch("/api/acteursjudiciaires/export/retraits", {
       headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -84,11 +151,13 @@ function TousLesRetraits() {
         a.click();
         URL.revokeObjectURL(url);
       })
-      .catch(() => setGlobalError(t("erreur_export") || "Erreur export"));
+      .catch(() => showToast(t("erreur_export") || "Erreur export", "error"));
   };
 
   return (
     <div className="page-container" dir="rtl">
+      <ConfirmModalComponent />
+      
       <h1 className="page-title">{t("tous_retraits_titre") || "جميع السحوبات"}</h1>
 
       {globalError && <div className="error-message">{globalError}</div>}
@@ -101,6 +170,42 @@ function TousLesRetraits() {
             <button className="btn-primary" onClick={exportToExcel}>
               {t("exporter_excel") || "تصدير Excel"}
             </button>
+          </div>
+        </div>
+
+        {/* 🔥 BARRE DE RECHERCHE */}
+        <div className="filters" style={{ marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <select 
+              value={searchType} 
+              onChange={(e) => setSearchType(e.target.value)}
+              className="form-input"
+              style={{ width: 'auto', minWidth: '120px' }}
+            >
+              <option value="numero">{t('rechercher_par_numero') || 'رقم الملف'}</option>
+              <option value="date">{t('rechercher_par_date') || 'التاريخ'}</option>
+            </select>
+            
+            <input
+              type="text"
+              placeholder={
+                searchType === 'numero' 
+                  ? (t('rechercher_numero_dossier') || 'بحث برقم الملف...')
+                  : (t('rechercher_date') || 'بحث بالتاريخ...')
+              }
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="form-input"
+              style={{ flex: 1, minWidth: '200px' }}
+            />
+            
+            <button className="btn-secondary" onClick={resetSearch}>
+              {t('reinitialiser') || 'إعادة تعيين'}
+            </button>
+            
+            <span style={{ marginRight: 'auto', color: '#6b7d90', fontSize: '0.9rem' }}>
+              {t('total') || 'المجموع'}: {filteredRetraits.length}
+            </span>
           </div>
         </div>
 
@@ -122,14 +227,16 @@ function TousLesRetraits() {
                 </tr>
               </thead>
               <tbody>
-                {retraits.length === 0 ? (
+                {filteredRetraits.length === 0 ? (
                   <tr>
                     <td colSpan={canManageRetraits ? 8 : 7}>
-                      {t("aucun_retrait_trouve") || "لا توجد سحوبات"}
+                      {searchTerm.trim() 
+                        ? (t("aucun_resultat") || "لا توجد نتائج مطابقة للبحث")
+                        : (t("aucun_retrait_trouve") || "لا توجد سحوبات")}
                     </td>
                   </tr>
                 ) : (
-                  retraits.map((r) => {
+                  filteredRetraits.map((r) => {
                     const actif = !r.dateDeRetour;
                     return (
                       <tr key={r.id}>
@@ -180,7 +287,7 @@ function TousLesRetraits() {
   );
 }
 
-// ---- Helpers (identiques à ceux de GererArchivesJuridiques) ----
+// ---- Helpers ----
 function formatDate(value) {
   if (!value) return "-";
   if (value === "0001-01-01T00:00:00" || (typeof value === "string" && value.startsWith("0001"))) return "-";

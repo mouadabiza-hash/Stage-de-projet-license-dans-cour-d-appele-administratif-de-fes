@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../hooks/usePermissions';
 import { useAuth } from '../context/AuthContext';
 import { useModal } from '../context/ModalContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../hooks/useConfirm';
 import DocumentModal from '../components/DocumentModal';
 import SearchableSelect from './SearchableSelect';
 
@@ -13,6 +15,8 @@ function MesEntites() {
   const perms = usePermissions();
   const { user } = useAuth();
   const { showConfirm } = useModal();
+  const { showToast } = useToast();
+  const { confirm, ConfirmModalComponent } = useConfirm();
   const serviceId = user?.idService;
 
   const [allDocuments, setAllDocuments] = useState([]);
@@ -187,18 +191,100 @@ function MesEntites() {
     localStorage.setItem('hiddenMesEntites', JSON.stringify(newHidden));
   };
 
+  // ========== FONCTION ARCHIVAGE CORRIGÉE ==========
   const handleArchive = async (doc) => {
-    if (!perms.canArchive) return;
-    const confirmed = await showConfirm(t('confirmation_archiver'), null, t('confirmation'), true);
+    console.log('🔍 handleArchive appelé', doc);
+    
+    if (!perms.canArchive) {
+      showToast(t('access_denied') || 'Vous n\'avez pas les droits pour archiver', 'error');
+      return;
+    }
+    
+    // Utiliser confirm de useConfirm
+    const confirmed = await confirm(
+      t('confirmation_archiver') || 'Voulez-vous vraiment archiver ce document ?',
+      { 
+        title: t('attention') || 'Attention', 
+        confirmText: t('archiver') || 'Archiver',
+        cancelText: t('annuler') || 'Annuler'
+      }
+    );
+    
+    console.log('🔍 Confirmé:', confirmed);
+    
     if (!confirmed) return;
+    
     const docType = doc.type || doc.Type;
     const docId = doc.idEntite;
+    
+    console.log('🔍 Archivage:', { docId, docType });
+    
     try {
-      if (docType === 'Administratif') await axios.put(`/api/courriers/archiver/${docId}`);
-      else await axios.put(`/api/acteursjudiciaires/archiver/${docId}`);
-      setSuccess(t('archivage_succes'));
-      fetchDocuments();
-    } catch { setError(t('erreur_archivage')); }
+      if (docType === 'Administratif') {
+        await axios.put(`/api/courriers/archiver/${docId}`);
+      } else {
+        await axios.put(`/api/acteursjudiciaires/archiver/${docId}`);
+      }
+      
+      showToast(t('archivage_succes') || 'Document archivé avec succès', 'success');
+      await fetchDocuments();
+    } catch (err) {
+      console.error('❌ Erreur archivage:', err);
+      const errorMsg = err.response?.data || t('erreur_archivage') || 'Erreur lors de l\'archivage';
+      showToast(errorMsg, 'error');
+    }
+  };
+
+  // ========== FONCTION BULK ARCHIVE CORRIGÉE ==========
+  const handleBulkArchive = async (docs) => {
+    if (!perms.canArchive) {
+      showToast(t('access_denied') || 'Vous n\'avez pas les droits pour archiver', 'error');
+      return;
+    }
+    
+    if (docs.length === 0) {
+      showToast(t('selection_requise') || 'Veuillez sélectionner au moins un document', 'warning');
+      return;
+    }
+    
+    const confirmed = await confirm(
+      `${t('confirmation_archiver')} (${docs.length} documents)`,
+      { 
+        title: t('attention') || 'Attention', 
+        confirmText: t('archiver') || 'Archiver',
+        cancelText: t('annuler') || 'Annuler'
+      }
+    );
+    
+    if (!confirmed) return;
+    
+    let ok = 0;
+    let fail = 0;
+    const errors = [];
+    
+    for (let doc of docs) {
+      try {
+        if ((doc.type || doc.Type) === 'Administratif') {
+          await axios.put(`/api/courriers/archiver/${doc.idEntite}`);
+        } else {
+          await axios.put(`/api/acteursjudiciaires/archiver/${doc.idEntite}`);
+        }
+        ok++;
+      } catch (err) {
+        fail++;
+        errors.push(`${doc.sujet || doc.idEntite}: ${err.response?.data || err.message}`);
+      }
+    }
+    
+    let message = `✅ ${ok} ${t('archives_succes') || 'document(s) archivé(s)'}`;
+    if (fail > 0) {
+      message += `\n\n⚠️ ${fail} échec(s):\n${errors.join('\n')}`;
+      showToast(message, 'warning');
+    } else {
+      showToast(message, 'success');
+    }
+    
+    await fetchDocuments();
   };
 
   const openAddModal = () => {
@@ -220,36 +306,35 @@ function MesEntites() {
     setShowFormModal(true);
   };
 
- const openEditModal = (doc) => {
-  if (doc.type !== 'Judiciaire') return;
-  if (user?.role === 'Procedures') return;
+  const openEditModal = (doc) => {
+    if (doc.type !== 'Judiciaire') return;
+    if (user?.role === 'Procedures') return;
 
-  setEditingDoc(doc);
-  const isLinked = doc.estDocumentLie === true;
-  setFormMode(isLinked ? 'linked' : 'file');
-  
-  const isEnregistrement = user?.role === 'Enregistrement';
-  setEditOnlyNumeroDossier(isEnregistrement);
-  
-  setFormData({
-    // 🔥 CORRECTION : Utiliser numeroDossierJudiciaire, PAS idBureauOrdre
-    numeroDossier: doc.numeroDossierJudiciaire || '',
-    tribunalSource: doc.source || '',
-    sujet: doc.sujet || '',
-    date: doc.dateCreation ? doc.dateCreation.slice(0, 10) : new Date().toISOString().slice(0, 10),
-    description: doc.description || '',
-    lienPdf: doc.lienPdf || '',
-    numeroPremiereInstance: doc.numeroPremiereInstance || '',
-    etat: doc.etatArchive || 'Nouveau',
-    parentJudiciaireId: doc.parentJudiciaireId || '',
-    typeJudiciaire: doc.typeJudiciaire || '',
-    linkedDocumentType: doc.linkedDocumentType || '',
-    linkedDocumentSource: doc.linkedDocumentSource || ''
-  });
-  if (isLinked) fetchParents();
-  setFormError(''); setFormSuccess('');
-  setShowFormModal(true);
-};
+    setEditingDoc(doc);
+    const isLinked = doc.estDocumentLie === true;
+    setFormMode(isLinked ? 'linked' : 'file');
+    
+    const isEnregistrement = user?.role === 'Enregistrement';
+    setEditOnlyNumeroDossier(isEnregistrement);
+    
+    setFormData({
+      numeroDossier: doc.numeroDossierJudiciaire || '',
+      tribunalSource: doc.source || '',
+      sujet: doc.sujet || '',
+      date: doc.dateCreation ? doc.dateCreation.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      description: doc.description || '',
+      lienPdf: doc.lienPdf || '',
+      numeroPremiereInstance: doc.numeroPremiereInstance || '',
+      etat: doc.etatArchive || 'Nouveau',
+      parentJudiciaireId: doc.parentJudiciaireId || '',
+      typeJudiciaire: doc.typeJudiciaire || '',
+      linkedDocumentType: doc.linkedDocumentType || '',
+      linkedDocumentSource: doc.linkedDocumentSource || ''
+    });
+    if (isLinked) fetchParents();
+    setFormError(''); setFormSuccess('');
+    setShowFormModal(true);
+  };
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
@@ -270,93 +355,89 @@ function MesEntites() {
     finally { setUploadingFile(false); e.target.value = ''; }
   };
 
-const submitForm = async () => {
-  setFormError('');
-  
-  // Case: editing only the numero dossier (Enregistrement role)
-  if (editOnlyNumeroDossier && editingDoc) {
-    if (!formData.numeroDossier) {
-      setFormError(t('numero_dossier_obligatoire') || 'رقم الاستئنافي مطلوب');
+  const submitForm = async () => {
+    setFormError('');
+    
+    if (editOnlyNumeroDossier && editingDoc) {
+      if (!formData.numeroDossier) {
+        setFormError(t('numero_dossier_obligatoire') || 'رقم الاستئنافي مطلوب');
+        return;
+      }
+      const fullPayload = {
+        idBureauOrdre: editingDoc.idBureauOrdre || null,
+        date: editingDoc.dateArchivage || editingDoc.date || new Date().toISOString(),
+        tribunalSource: editingDoc.tribunalSource || editingDoc.source || '',
+        sujet: editingDoc.sujet || '',
+        description: editingDoc.description || '',
+        etatArchive: editingDoc.etatArchive || editingDoc.etat || 'Nouveau',
+        lienPdf: editingDoc.lienPdf || '',
+        idService: editingDoc.idService,
+        estTransmissible: editingDoc.estTransmissible !== undefined ? editingDoc.estTransmissible : true,
+        numeroPremiereInstance: editingDoc.numeroPremiereInstance || null,
+        estDocumentLie: editingDoc.estDocumentLie || false,
+        parentJudiciaireId: editingDoc.parentJudiciaireId || null,
+        destinataire: editingDoc.destinataire || 'محكمة الاستئناف',
+        numeroDossier: formData.numeroDossier,
+        typeJudiciaire: editingDoc.typeJudiciaire || null,
+        linkedDocumentType: editingDoc.linkedDocumentType || null,
+        linkedDocumentSource: editingDoc.linkedDocumentSource || null,
+      };
+      try {
+        await axios.put(`/api/acteursjudiciaires/${editingDoc.idEntite}`, fullPayload);
+        setFormSuccess(t('modification_succes'));
+        setTimeout(() => { setShowFormModal(false); fetchDocuments(); }, 1500);
+      } catch (err) {
+        setFormError(getErrorMessage(err, t('erreur_enregistrement')));
+      }
       return;
     }
-    // Build full payload using existing document data + new numeroDossier
-    const fullPayload = {
-      idBureauOrdre: editingDoc.idBureauOrdre || null,
-      date: editingDoc.dateArchivage || editingDoc.date || new Date().toISOString(),
-      tribunalSource: editingDoc.tribunalSource || editingDoc.source || '',
-      sujet: editingDoc.sujet || '',
-      description: editingDoc.description || '',
-      etatArchive: editingDoc.etatArchive || editingDoc.etat || 'Nouveau',
-      lienPdf: editingDoc.lienPdf || '',
-      idService: editingDoc.idService,
-      estTransmissible: editingDoc.estTransmissible !== undefined ? editingDoc.estTransmissible : true,
-      numeroPremiereInstance: editingDoc.numeroPremiereInstance || null,
-      estDocumentLie: editingDoc.estDocumentLie || false,
-      parentJudiciaireId: editingDoc.parentJudiciaireId || null,
-      destinataire: editingDoc.destinataire || 'محكمة الاستئناف',
-      numeroDossier: formData.numeroDossier,  // new value
-      typeJudiciaire: editingDoc.typeJudiciaire || null,
-      linkedDocumentType: editingDoc.linkedDocumentType || null,
-      linkedDocumentSource: editingDoc.linkedDocumentSource || null,
+    
+    if (!formData.sujet || !formData.date) {
+      setFormError(t('champs_obligatoires'));
+      return;
+    }
+    if (formMode === 'file' && !formData.tribunalSource) {
+      setFormError(t('tribunal_source_requis'));
+      return;
+    }
+    if (formMode === 'linked' && !formData.parentJudiciaireId) {
+      setFormError(t('parent_requis'));
+      return;
+    }
+
+    const payload = {
+      date: new Date(formData.date).toISOString(),
+      tribunalSource: formMode === 'file' ? formData.tribunalSource : '',
+      sujet: formData.sujet,
+      direction: 'Entrant',
+      description: formData.description,
+      etatArchive: formData.etat,
+      lienPdf: formData.lienPdf,
+      idService: serviceId,
+      estTransmissible: true,
+      numeroPremiereInstance: formData.numeroPremiereInstance || null,
+      estDocumentLie: formMode === 'linked',
+      parentJudiciaireId: formMode === 'linked' ? Number(formData.parentJudiciaireId) : null,
+      destinataire: 'محكمة الاستئناف',
+      numeroDossier: formMode === 'file' ? formData.numeroDossier : null,
+      typeJudiciaire: formMode === 'file' ? formData.typeJudiciaire : null,
+      linkedDocumentType: formMode === 'linked' ? formData.linkedDocumentType : null,
+      linkedDocumentSource: formMode === 'linked' ? formData.linkedDocumentSource : null,
     };
+
     try {
-      await axios.put(`/api/acteursjudiciaires/${editingDoc.idEntite}`, fullPayload);
-      setFormSuccess(t('modification_succes'));
+      if (editingDoc) {
+        await axios.put(`/api/acteursjudiciaires/${editingDoc.idEntite}`, payload);
+      } else {
+        await axios.post('/api/acteursjudiciaires', payload);
+      }
+      setFormSuccess(editingDoc ? t('modification_succes') : t('ajout_succes'));
       setTimeout(() => { setShowFormModal(false); fetchDocuments(); }, 1500);
     } catch (err) {
       setFormError(getErrorMessage(err, t('erreur_enregistrement')));
     }
-    return;
-  }
-  
-  // Normal add / edit (full document)
-  if (!formData.sujet || !formData.date) {
-    setFormError(t('champs_obligatoires'));
-    return;
-  }
-  if (formMode === 'file' && !formData.tribunalSource) {
-    setFormError(t('tribunal_source_requis'));
-    return;
-  }
-  if (formMode === 'linked' && !formData.parentJudiciaireId) {
-    setFormError(t('parent_requis'));
-    return;
-  }
-
-  const payload = {
-    date: new Date(formData.date).toISOString(),
-    tribunalSource: formMode === 'file' ? formData.tribunalSource : '',
-    sujet: formData.sujet,
-    direction: 'Entrant',
-    description: formData.description,
-    etatArchive: formData.etat,
-    lienPdf: formData.lienPdf,
-    idService: serviceId,
-    estTransmissible: true,
-    numeroPremiereInstance: formData.numeroPremiereInstance || null,
-    estDocumentLie: formMode === 'linked',
-    parentJudiciaireId: formMode === 'linked' ? Number(formData.parentJudiciaireId) : null,
-    destinataire: 'محكمة الاستئناف',
-    numeroDossier: formMode === 'file' ? formData.numeroDossier : null,
-    typeJudiciaire: formMode === 'file' ? formData.typeJudiciaire : null,
-    linkedDocumentType: formMode === 'linked' ? formData.linkedDocumentType : null,
-    linkedDocumentSource: formMode === 'linked' ? formData.linkedDocumentSource : null,
   };
 
-  try {
-    if (editingDoc) {
-      await axios.put(`/api/acteursjudiciaires/${editingDoc.idEntite}`, payload);
-    } else {
-      await axios.post('/api/acteursjudiciaires', payload);
-    }
-    setFormSuccess(editingDoc ? t('modification_succes') : t('ajout_succes'));
-    setTimeout(() => { setShowFormModal(false); fetchDocuments(); }, 1500);
-  } catch (err) {
-    setFormError(getErrorMessage(err, t('erreur_enregistrement')));
-  }
-};
-
-  // Selection helpers for bulk archive
   const handleSelectAll = (docs, setSelectAllFn, selectAllState) => {
     if (selectAllState) {
       setSelectedIds(prev => prev.filter(id => !docs.map(d => `${d.idEntite}_${d.type || d.Type}`).includes(id)));
@@ -366,28 +447,13 @@ const submitForm = async () => {
     }
     setSelectAllFn(!selectAllState);
   };
+
   const handleSelectOne = (doc) => {
     const key = `${doc.idEntite}_${doc.type || doc.Type}`;
     setSelectedIds(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
   };
+
   const getSelectedDocs = (docs) => docs.filter(d => selectedIds.includes(`${d.idEntite}_${d.type || d.Type}`));
-  const handleBulkArchive = async (docs) => {
-    if (!perms.canArchive || docs.length === 0) return;
-    const confirmed = await showConfirm(`${t('confirmation_archiver')} (${docs.length} documents)`, null, t('confirmation'), true);
-    if (!confirmed) return;
-    let ok = 0, fail = 0;
-    for (let doc of docs) {
-      try {
-        if ((doc.type || doc.Type) === 'Administratif')
-          await axios.put(`/api/courriers/archiver/${doc.idEntite}`);
-        else
-          await axios.put(`/api/acteursjudiciaires/archiver/${doc.idEntite}`);
-        ok++;
-      } catch { fail++; }
-    }
-    setSuccess(`${ok} ${t('archives_succes')}${fail > 0 ? ` (${fail} échecs)` : ''}`);
-    fetchDocuments();
-  };
 
   // Transfer functions
   const openTransferModal = (doc) => {
@@ -529,6 +595,7 @@ const submitForm = async () => {
     } catch { setModalDocument(doc); }
     setIsModalOpen(true);
   };
+
   const closeModal = () => { setIsModalOpen(false); setModalDocument(null); };
 
   const shouldShowTransferButton = (doc) => {
@@ -589,7 +656,7 @@ const submitForm = async () => {
           </thead>
           <tbody>
             {currentDocs.length === 0 ? (
-              <tr><td colSpan="8" className="text-muted">{t('aucun_document')}  </td> </tr>
+              <tr><td colSpan="8" className="text-muted">{t('aucun_document')}</td> </tr>
             ) : (
               currentDocs.map(doc => {
                 const key = `${doc.idEntite}_${doc.type || doc.Type}`;
@@ -626,7 +693,14 @@ const submitForm = async () => {
                           <button onClick={() => openTransferChoice(doc)}>{t('transferer')}</button>
                       )}
                       <button onClick={() => handleHide(doc)}>{t('masquer')}</button>
-                      {canArchive && <button onClick={() => handleArchive(doc)}>{t('archiver')}</button>}
+                      {canArchive && (
+                        <button 
+                          className="action-btn action-btn-warning" 
+                          onClick={() => handleArchive(doc)}
+                        >
+                          {t('archiver')}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -647,9 +721,12 @@ const submitForm = async () => {
 
   return (
     <div className="page-container">
+      <ConfirmModalComponent />
+      
       <h1 className="page-title">{t('mes_entites')}</h1>
       {error && <div className="error-message">{error}</div>}
       {success && <div className="success-message">{success}</div>}
+      
       <div className="filters">
         {(user?.role === 'Admin' || user?.role === 'Enregistrement' || user?.role === 'Procedures') && (
           <button className="btn-primary" onClick={openAddModal}>+ {t('add_document')}</button>
@@ -660,12 +737,13 @@ const submitForm = async () => {
           📂 {t('hidden_documents') || 'الوثائق المخفية'} ({hiddenIds.length})
         </button>
       </div>
+      
       {renderTable(t('my_documents'), ownDocuments, selectAllOwn, setSelectAllOwn, rowsPerPageOwn, currentPageOwn, setCurrentPageOwn, setRowsPerPageOwn)}
       {subDocuments.length > 0 && renderTable(t('substitute_documents'), subDocuments, selectAllSub, setSelectAllSub, rowsPerPageSub, currentPageSub, setCurrentPageSub, setRowsPerPageSub)}
 
       {/* Add / Edit Modal */}
       {showFormModal && (
-        <div className="modal-overlay" onClick={()=>setShowFormModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'700px', maxHeight:'85vh', overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
             <div className="registry-panel-header">
               <h3>{editingDoc ? t('modifier_document') : t('ajouter_document_judiciaire')}</h3>
@@ -778,7 +856,7 @@ const submitForm = async () => {
 
       {/* Single Transfer Modal */}
       {showSingleTransferModal && (
-        <div className="modal-overlay" onClick={() => setShowSingleTransferModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
             <div className="registry-panel-header">
               <h3>{t('transferer')} : {singleTransferTarget?.sujet || ''}</h3>
@@ -797,8 +875,8 @@ const submitForm = async () => {
 
       {/* Transfer Choice Modal */}
       {showTransferChoice && (
-        <div className="modal-overlay" onClick={() => setShowTransferChoice(false)}>
-          <div className="modal" style={{ maxWidth: '400px' }}>
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
             <div className="registry-panel-header">
               <h3>{t('transfer_choice_title') || 'اختر طريقة الإحالة'}</h3>
               <button className="btn-secondary" onClick={() => setShowTransferChoice(false)}>{t('fermer')}</button>
@@ -813,7 +891,7 @@ const submitForm = async () => {
 
       {/* Multi Transfer Modal */}
       {showTransferModal && (
-        <div className="modal-overlay" onClick={() => setShowTransferModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '650px', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div className="registry-panel-header">
               <h3>{bulkTransferDocs.length > 0 ? `${t('transferer')} ${bulkTransferDocs.length} documents` : `${t('transferer')} : ${transferTarget?.sujet || ''}`}</h3>
@@ -885,7 +963,7 @@ const submitForm = async () => {
 
       {/* Hidden Documents Modal */}
       {showHiddenModal && (
-        <div className="modal-overlay" onClick={() => setShowHiddenModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
             <div className="registry-panel-header">
               <h3>{t('documents_masques') || 'الوثائق المخفية'}</h3>

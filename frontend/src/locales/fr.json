@@ -565,7 +565,18 @@
 "modifier_cabinet": "Modifier le cabinet",
 "cabinet_requis": "Veuillez saisir un cabinet",
 "cabinet_modifie": "Cabinet modifié avec succès",
-"erreur_modification": "Erreur lors de la modification"
+"erreur_modification": "Erreur lors de la modification",
+
+  "aucun_retrait_trouve": "Aucun retrait trouvé",
+  "retourne": "Retourné",
+  "rechercher_par_numero": "Rechercher par numéro",
+  "rechercher_par_date": "Rechercher par date",
+  "rechercher_numero_dossier": "Rechercher par numéro de dossier...",
+  "rechercher_date": "Rechercher par date (JJ/MM/AAAA)...",
+  "total": "Total",
+  "aucun_resultat": "Aucun résultat trouvé",
+  "access_denied": "Accès refusé"
+
 
 }
 
